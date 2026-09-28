@@ -55,11 +55,39 @@ test('missing password configuration fails closed', async () => {
 test('the same save request creates only one consultation', async () => {
   const { db, call, signIn } = setup();
   const cookie = await signIn();
-  const data = { request_id: '0b379d57-2843-43bf-bb19-1fd80bbf69c0', alias: 'Cliente A', channel: 'Marketplace', product_id: 'kp5501' };
+  const data = { request_id: '0b379d57-2843-43bf-bb19-1fd80bbf69c0', alias: 'Cliente A', channel: 'Marketplace', product_id: 'kp5501', status: 'agendado', amount: 155, actual_cost: 85, expenses: 5, delivery_mode: 'persona', delivery_place: 'UAGRM', delivery_at: '2026-10-01T16:00', paid: false, notes: 'Confirmar antes de salir' };
   const first = await call('/api/leads', 'POST', data, cookie), second = await call('/api/leads', 'POST', data, cookie);
   assert.equal(first.status, 201); assert.equal(second.status, 200);
   assert.equal((await first.json()).id, (await second.json()).id);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM leads').get().count, 1);
+  const saved = db.prepare('SELECT status,amount,delivery_place,notes FROM leads').get();
+  assert.deepEqual({ ...saved }, { status: 'agendado', amount: 155, delivery_place: 'UAGRM', notes: 'Confirmar antes de salir' });
+});
+
+test('cannot mark a delivery complete without verified payment or valid details', async () => {
+  const { db, call, signIn } = setup();
+  const cookie = await signIn();
+  const data = { request_id: crypto.randomUUID(), alias: 'Cliente B', channel: 'WhatsApp', product_id: 'pb6010', status: 'entregado', delivery_mode: 'yango', delivery_place: 'Centro', delivery_at: '2026-02-30T25:00', paid: false };
+  assert.equal((await call('/api/leads', 'POST', data, cookie)).status, 400);
+  data.delivery_at = '2026-10-01T16:00';
+  assert.equal((await call('/api/leads', 'POST', data, cookie)).status, 400);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM leads').get().count, 0);
+  data.paid = true;
+  assert.equal((await call('/api/leads', 'POST', data, cookie)).status, 201);
+});
+
+test('existing product data is kept and availability needs explicit verification', async () => {
+  const { db, call, signIn } = setup();
+  const cookie = await signIn();
+  const initial = await (await call('/api/state', 'GET', undefined, cookie)).json();
+  assert.equal(initial.products.find(p => p.id === 'pb6010').availability_checked_at, '');
+  const product = initial.products.find(p => p.id === 'pb6010');
+  const save = async updates => call('/api/products/pb6010', 'PATCH', { ...product, availability: 'en_mano', available_units: 1, ...updates }, cookie);
+  assert.equal((await save({ availability_checked: true })).status, 200);
+  assert.ok(db.prepare("SELECT checked_at FROM availability_checks WHERE product_id='pb6010'").get().checked_at);
+  assert.equal((await save({ available_units: 2, availability_checked: false })).status, 200);
+  assert.equal(db.prepare("SELECT checked_at FROM availability_checks WHERE product_id='pb6010'").get(), undefined);
+  assert.equal((await save({ availability: 'por_confirmar', available_units: 1 })).status, 400);
 });
 
 test('AI draft does not run without a server-side key', async () => {

@@ -16,12 +16,15 @@
     <h1>Mi mesa de ventas</h1>
     <p>Entra para revisar consultas, entregas, productos y respuestas.</p>
     <form id="login-form">
+      <label for="username">Usuario</label>
+      <input id="username" name="username" type="text" autocomplete="username" value="propietario" readonly>
       <label for="password">Contraseña</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
       <button id="login-button" class="primary" type="submit">Entrar</button>
     </form>
     <p id="login-error" class="login-error" role="alert" hidden></p>
-    <small>Acceso solo para el propietario · La sesión dura 7 días</small>
+    <p class="login-help">Guarda la contraseña en el gestor del celular y la PC. Después podrás entrar con autocompletado o huella, sin escribirla cada vez. La sesión dura 7 días.</p>
+    <details class="recovery"><summary>¿Perdiste el acceso?</summary><p>Si aún controlas tu cuenta de Cloudflare, cambia el secreto <code>APP_PASSWORD</code> del Worker por una contraseña nueva y guárdala en tu gestor. El cambio cerrará las sesiones anteriores. No envíes esa contraseña por chat.</p></details>
   </main>
 </body>
 </html>

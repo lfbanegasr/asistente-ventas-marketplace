@@ -14,8 +14,10 @@ async function api(path, method = 'GET', data) {
   return result;
 }
 async function refresh() {
+  $('#loading').hidden = false;
   try { const data = await api('/api/state'); state.products = data.products; state.leads = data.leads; state.aiReady = data.ai_ready; render(); }
   catch (e) { notice(`No se pudo cargar: ${e.message}`); }
+  finally { $('#loading').hidden = true; }
 }
 function switchView(view) {
   state.view = view;
@@ -65,7 +67,7 @@ function renderProducts() {
     const card = element('article', '', 'card'); const head = element('div', '', 'card-head'); const info = element('div', '');
     info.append(element('h3', p.name), element('span', availability[p.availability], `badge ${p.availability === 'por_confirmar' ? 'warn' : ''}`)); head.append(info, element('div', money(p.price), 'price'));
     const facts = element('p', p.facts || 'Sin datos de producto');
-    const meta = element('div', '', 'card-meta'); meta.append(element('span', `Costo ${money(p.cost)}`), element('span', `Mínimo interno ${money(p.min_price)}`), element('span', `En mano: ${p.available_units}`), element('span', `Entrega: ${localDate(p.ready_date)}`));
+    const meta = element('div', '', 'card-meta'); meta.append(element('span', `Costo ${money(p.cost)}`), element('span', `Mínimo interno ${money(p.min_price)}`), element('span', `En mano: ${p.available_units}`), element('span', `Entrega: ${localDate(p.ready_date)}`), element('span', p.availability_checked_at ? `Verificado: ${localDate(p.availability_checked_at.replace(' ', 'T'))}` : 'Disponibilidad sin verificar'));
     const button = element('button', 'Editar ficha', 'secondary'); button.addEventListener('click', () => openProduct(p)); card.append(head, facts, meta, button); list.append(card);
   });
 }
@@ -77,6 +79,7 @@ function renderPickers() {
 }
 function openLead(lead) {
   const form = $('#lead-form'); form.reset(); state.pendingLeadId = lead ? null : crypto.randomUUID();
+  $('#lead-form-error').hidden = true;
   $('#lead-dialog-title').textContent = lead ? 'Actualizar consulta' : 'Nueva consulta';
   form.elements.id.value = lead?.id || '';
   if (lead) {
@@ -93,6 +96,7 @@ function openLead(lead) {
 }
 function openProduct(product) {
   const form = $('#product-form'); form.reset(); $('#product-dialog-title').textContent = product ? 'Editar producto' : 'Nuevo producto';
+  $('#product-form-error').hidden = true;
   form.elements.id.value = product?.id || '';
   if (product) for (const key of ['name','facts','cost','price','min_price','availability','available_units','ready_date']) form.elements[key].value = product[key] ?? '';
   else { form.elements.availability.value = 'por_confirmar'; form.elements.available_units.value = 0; }
@@ -101,32 +105,28 @@ function openProduct(product) {
 async function saveLead(event) {
   event.preventDefault(); const form = event.currentTarget, button = $('#save-lead'); if (button.disabled) return;
   const data = Object.fromEntries(new FormData(form)); data.paid = form.elements.paid.checked;
+  $('#lead-form-error').hidden = true;
   button.disabled = true; button.textContent = 'Guardando…';
   try {
-    let id = data.id;
-    if (!id) {
-      const created = await api('/api/leads', 'POST', { request_id: state.pendingLeadId, alias: data.alias, channel: data.channel, product_id: data.product_id }); id = created.id;
-    }
-    await api(`/api/leads/${encodeURIComponent(id)}`, 'PATCH', data);
+    if (data.id) await api(`/api/leads/${encodeURIComponent(data.id)}`, 'PATCH', data);
+    else await api('/api/leads', 'POST', { ...data, request_id: state.pendingLeadId });
     state.pendingLeadId = null; $('#lead-dialog').close(); await refresh(); notice('Consulta guardada.', true);
-  } catch (e) { notice(`No se guardó: ${e.message}`); }
+  } catch (e) { const box = $('#lead-form-error'); box.textContent = `No se guardó: ${e.message}`; box.hidden = false; }
   finally { button.disabled = false; button.textContent = 'Guardar'; }
 }
 async function saveProduct(event) {
   event.preventDefault(); const form = event.currentTarget, button = $('#save-product'); if (button.disabled) return;
-  const data = Object.fromEntries(new FormData(form)); button.disabled = true; button.textContent = 'Guardando…';
+  const data = Object.fromEntries(new FormData(form)); data.availability_checked = form.elements.availability_checked.checked; $('#product-form-error').hidden = true; button.disabled = true; button.textContent = 'Guardando…';
   try { await api(data.id ? `/api/products/${encodeURIComponent(data.id)}` : '/api/products', data.id ? 'PATCH' : 'POST', data); $('#product-dialog').close(); await refresh(); notice('Producto guardado.', true); }
-  catch (e) { notice(`No se guardó: ${e.message}`); }
+  catch (e) { const box = $('#product-form-error'); box.textContent = `No se guardó: ${e.message}`; box.hidden = false; }
   finally { button.disabled = false; button.textContent = 'Guardar'; }
 }
 function baseDraft() {
   const product = state.products.find(p => p.id === $('#ai-product').value); if (!product) return;
   const goal = $('#ai-goal').value;
   const firstFact = product.facts.split(/\.\s/)[0].replace(/\.$/, '');
-  let text = `¡Hola! ${product.name} está a ${money(product.price)}. ${firstFact}.`;
-  if (product.availability === 'en_mano' && product.available_units > 0) text += ' Tengo una unidad disponible por ahora; te confirmo antes de coordinar.';
-  else if (product.availability === 'proveedor_confirmado' && product.ready_date) text += ` Puedo gestionar el pedido y confirmar la entrega desde el ${localDate(product.ready_date)}.`;
-  else text += ' Te confirmo disponibilidad y fecha de entrega antes de cerrar el pedido.';
+  let text = `¡Hola! ${product.name} está a ${money(product.price)}.${firstFact ? ` ${firstFact}.` : ''}`;
+  text += ' Te confirmo disponibilidad y fecha de entrega antes de cerrar el pedido.';
   if (goal.includes('rebaja')) text += ` El precio publicado es ${money(product.price)}. Si me dices qué modalidad de entrega te conviene, reviso qué puedo ofrecerte.`;
   else if (goal.includes('Yango')) text += ' ¿En qué barrio o referencia estás? Te cotizo Yango sin compromiso. El producto se paga antes de despacharlo y el envío se cotiza aparte.';
   else if (goal.includes('entrega')) text += ' Podemos coordinar en la UAGRM (módulos), Cine Center u otro punto público. En persona pagas al recibir. ¿Qué día y punto te convienen?';
@@ -137,9 +137,10 @@ function setDraft(text) { const box = $('#draft'); box.textContent = text; box.c
 async function aiDraft() {
   const button = $('#ai-draft'); if (button.disabled) return;
   const message = $('#customer-message').value.trim(); if (!message) { notice('Pega primero el mensaje del cliente.'); return; }
+  baseDraft();
   button.disabled = true; button.textContent = 'Preparando…';
   try { const result = await api('/api/ai', 'POST', { product_id: $('#ai-product').value, goal: $('#ai-goal').value, customer_message: message }); setDraft(result.draft); }
-  catch (e) { notice(e.message); }
+  catch (e) { notice(`${e.message} La respuesta base sigue disponible para revisar y copiar.`); }
   finally { button.disabled = !state.aiReady; button.textContent = 'Sugerir con Gemini'; }
 }
 function exportCsv() {

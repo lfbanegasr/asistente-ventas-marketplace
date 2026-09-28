@@ -7,7 +7,7 @@ fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' })
   .then(response => response.json())
   .then(session => {
     if (session.authenticated) location.replace('/');
-    else if (!session.configured) { showError('El inicio de sesión aún no está configurado. Añade APP_PASSWORD como secreto en Cloudflare.'); button.disabled = true; }
+    else if (!session.configured) { showError('El acceso aún no está configurado. Añade APP_PASSWORD como secreto del Worker en Cloudflare y guárdalo en tu gestor de contraseñas.'); button.disabled = true; }
   })
   .catch(() => showError('No se pudo comprobar el estado del sistema. Recarga la página.'));
 
