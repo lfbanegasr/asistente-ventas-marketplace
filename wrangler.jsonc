@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "asistente-ventas-marketplace",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-28",
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "asistente-ventas-db",
+    "migrations_dir": "migrations"
+  }],
+  "vars": {
+    "GEMINI_MODEL": "gemini-2.5-flash-lite"
+  },
+  "access": {
+    "dev": {
+      "aud": "asistente-ventas-local",
+      "identity": { "email": "local@example.com" }
+    }
+  }
+}
