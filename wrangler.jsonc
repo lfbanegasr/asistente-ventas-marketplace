@@ -10,11 +10,5 @@
   }],
   "vars": {
     "GEMINI_MODEL": "gemini-2.5-flash-lite"
-  },
-  "access": {
-    "dev": {
-      "aud": "asistente-ventas-local",
-      "identity": { "email": "local@example.com" }
-    }
   }
 }

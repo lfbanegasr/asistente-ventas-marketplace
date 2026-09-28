@@ -1,5 +1,6 @@
 import { bundledAssets } from './bundled-assets.js';
 import { initialSchema } from './bundled-schema.js';
+import { authenticated, clearCookie, login, passwordReady } from './auth.js';
 
 const statuses = new Set(['consulta', 'interesado', 'confirmado', 'comprado', 'agendado', 'entregado', 'cancelado']);
 const modes = new Set(['por_definir', 'persona', 'yango']);
@@ -14,8 +15,8 @@ const headers = {
   'Content-Security-Policy': "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'"
 };
 
-function json(data, status = 200) {
-  return Response.json(data, { status, headers });
+function json(data, status = 200, extraHeaders = {}) {
+  return Response.json(data, { status, headers: { ...headers, ...extraHeaders } });
 }
 function error(message, status = 400) {
   return json({ error: message }, status);
@@ -40,7 +41,12 @@ async function body(request) {
 }
 function sameOrigin(request) {
   const origin = request.headers.get('origin');
-  return !origin || origin === new URL(request.url).origin;
+  return origin ? origin === new URL(request.url).origin : ['GET', 'HEAD'].includes(request.method);
+}
+function assetResponse(request, path) {
+  const asset = bundledAssets[path];
+  if (!asset) return error('Página no encontrada.', 404);
+  return new Response(request.method === 'HEAD' ? null : asset.body, { headers: { ...headers, 'Content-Type': asset.type } });
 }
 async function products(env) {
   return (await env.DB.prepare('SELECT * FROM products ORDER BY name').all()).results;
@@ -133,13 +139,23 @@ async function aiDraft(request, env) {
 }
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const url = new URL(request.url);
     try {
-      if (!ctx.access) return error('Acceso privado requerido.', 403);
-      const identity = await ctx.access.getIdentity();
-      if (!env.OWNER_EMAIL || identity?.email?.toLowerCase() !== env.OWNER_EMAIL.toLowerCase()) return error('Esta cuenta no tiene acceso.', 403);
       if (!sameOrigin(request)) return error('Origen no permitido.', 403);
+      if (request.method === 'POST' && url.pathname === '/api/login') return login(request, env);
+      if (request.method === 'POST' && url.pathname === '/api/logout') return json({ ok: true }, 200, { 'Set-Cookie': clearCookie() });
+      const signedIn = await authenticated(request, env);
+      if (request.method === 'GET' && url.pathname === '/api/session') return json({ authenticated: signedIn, configured: passwordReady(env) });
+      if (['GET', 'HEAD'].includes(request.method) && ['/login', '/login.html'].includes(url.pathname)) {
+        if (signedIn) return Response.redirect(new URL('/', request.url), 302);
+        return assetResponse(request, '/login.html');
+      }
+      if (['GET', 'HEAD'].includes(request.method) && ['/style.css', '/login.js', '/manifest.webmanifest'].includes(url.pathname)) return assetResponse(request, url.pathname);
+      if (!signedIn) {
+        if (url.pathname.startsWith('/api/') || url.pathname === '/app.js') return error('Inicia sesión para continuar.', 401);
+        return Response.redirect(new URL('/login', request.url), 302);
+      }
       if (url.pathname.startsWith('/api/')) {
         if (!env.DB) return error('Base de datos sin configurar.', 503);
         await ensureSchema(env);
@@ -152,9 +168,7 @@ export default {
         return error('Ruta no encontrada.', 404);
       }
       if (request.method !== 'GET' && request.method !== 'HEAD') return error('Método no permitido.', 405);
-      const asset = bundledAssets[url.pathname === '/' ? '/index.html' : url.pathname];
-      if (!asset) return error('Página no encontrada.', 404);
-      return new Response(request.method === 'HEAD' ? null : asset.body, { headers: { ...headers, 'Content-Type': asset.type } });
+      return assetResponse(request, url.pathname === '/' ? '/index.html' : url.pathname);
     } catch (e) {
       if (e instanceof Error && (e.message.startsWith('Envía') || e.message.startsWith('Los datos') || e.message.startsWith('El contenido'))) return error(e.message);
       console.error('Request failed:', e?.message || e);

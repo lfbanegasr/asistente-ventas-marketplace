@@ -9,6 +9,7 @@ function notice(message, success = false) { const box = $('#notice'); box.textCo
 async function api(path, method = 'GET', data) {
   const response = await fetch(path, { method, headers: data ? { 'Content-Type': 'application/json' } : undefined, body: data ? JSON.stringify(data) : undefined, credentials: 'same-origin' });
   const result = await response.json().catch(() => ({}));
+  if (response.status === 401) { location.replace('/login'); throw new Error('La sesión terminó.'); }
   if (!response.ok) throw new Error(result.error || `Error ${response.status}`);
   return result;
 }
@@ -157,6 +158,7 @@ $('#lead-form').addEventListener('submit', saveLead); $('#product-form').addEven
 $('#lead-form [name="product_id"]').addEventListener('change', event => { const p = state.products.find(p => p.id === event.target.value); if (p) { const form = $('#lead-form'); form.elements.amount.value = p.price; form.elements.actual_cost.value = p.cost; } });
 $('#search').addEventListener('input', renderLeads); $('#status-filter').addEventListener('change', renderLeads);
 $('#refresh').addEventListener('click', refresh); $('#export').addEventListener('click', exportCsv);
+$('#logout').addEventListener('click', async () => { try { await api('/api/logout', 'POST'); location.replace('/login'); } catch (e) { notice(e.message); } });
 $('#base-draft').addEventListener('click', baseDraft); $('#ai-draft').addEventListener('click', aiDraft);
 $('#copy-draft').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#draft').textContent); notice('Texto copiado. Revísalo antes de enviarlo.', true); } catch { notice('No se pudo copiar automáticamente. Selecciona el texto.'); } });
 $('#today').textContent = new Intl.DateTimeFormat('es-BO', { dateStyle: 'full', timeZone: 'America/La_Paz' }).format(new Date());

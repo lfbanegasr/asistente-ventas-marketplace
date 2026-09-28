@@ -14,7 +14,7 @@ En persona: UAGRM (módulos), Cine Center u otro punto público acordado, con pa
 
 ## Para ponerla en Internet
 
-Necesitas una cuenta propia de Cloudflare, una dirección de correo que solo tú controles y una clave gratuita de Gemini creada en Google AI Studio. **No pegues la clave en un chat ni en archivos públicos.** No se necesita comprar un dominio; Cloudflare asigna una dirección `workers.dev`.
+Necesitas una cuenta propia de Cloudflare, una contraseña privada de al menos 16 caracteres y una clave gratuita de Gemini creada en Google AI Studio. **No pegues ninguna clave ni contraseña en un chat ni en archivos públicos.** No se necesita comprar un dominio; Cloudflare asigna una dirección `workers.dev`.
 
 ### Despliegue con GitHub y Cloudflare
 
@@ -26,25 +26,26 @@ El repositorio privado contiene solo este proyecto. Cloudflare puede conectarlo 
 - **Build command:** `npm run build`.
 - **Deploy command:** `npx wrangler deploy`.
 
-Cloudflare puede crear la base D1 automáticamente a partir de `wrangler.jsonc`. El esquema inicial y las tres fichas se crean la primera vez que el propietario abre la aplicación. Antes de abrirla, configura en el Worker los secretos `OWNER_EMAIL` (el correo que autorizarás en Access) y `GEMINI_API_KEY` (clave nueva de AI Studio), y activa **Access → Protect this Worker behind Access → All traffic** para permitir solo ese correo. La clave que se haya compartido en un chat debe revocarse y reemplazarse.
+Cloudflare puede crear la base D1 automáticamente a partir de `wrangler.jsonc`. El esquema inicial y las tres fichas se crean la primera vez que entras. Antes de abrirla, configura en el Worker los secretos `APP_PASSWORD` (una contraseña única y larga) y `GEMINI_API_KEY` (clave nueva de AI Studio). La aplicación muestra su propio inicio de sesión, limita los intentos de contraseña y mantiene una sesión durante siete días. La clave que se haya compartido en un chat debe revocarse y reemplazarse.
+
+Si antes configuraste Cloudflare Access, mantenlo activo mientras publicas esta versión y agregas `APP_PASSWORD`. Luego desactiva **Access** para este Worker. El sistema seguirá cerrado con su propia contraseña; si el secreto no está configurado, no dará acceso a los datos. `OWNER_EMAIL` ya no se usa y puede eliminarse después de comprobar el nuevo inicio de sesión.
 
 Después de cada cambio en `main`, GitHub activará un nuevo despliegue. No subas `.dev.vars`, `.config`, `.npm-cache`, `.wrangler` ni `node_modules`: están excluidos por `.gitignore`.
 
 ### Alternativa desde la terminal
 
-1. Abre una terminal en esta carpeta e instala las dependencias con `npm install`. Usa una versión reciente de Wrangler que admita `ctx.access` y `access.dev` (la versión 4.92 instalada en el panel anterior es anterior a esa función).
+1. Abre una terminal en esta carpeta e instala las dependencias con `npm install`.
 2. Entra a Cloudflare con `npx wrangler login`.
-3. Ejecuta `npm run deploy`. Cloudflare creará el Worker y la base D1 definida en `wrangler.jsonc`. El Worker bloqueará el acceso hasta que configures tu identidad.
+3. Ejecuta `npm run deploy`. Cloudflare creará el Worker y la base D1 definida en `wrangler.jsonc`. El Worker bloqueará los datos hasta que configures la contraseña.
 4. La base se inicializa al primer acceso autorizado. `npm run db:remote` también está disponible si prefieres aplicar el archivo de migración manualmente.
-5. Ejecuta `npx wrangler secret put OWNER_EMAIL` y escribe tu correo de acceso. Después ejecuta `npx wrangler secret put GEMINI_API_KEY` y escribe la clave de Gemini. Los valores deben quedar como secretos del Worker, nunca en `wrangler.jsonc` ni en el frontend.
-6. En el panel de Cloudflare: **Workers & Pages → asistente-ventas-marketplace → Access → Protect this Worker**. Protege producción y vistas previas. Permite solo tu correo. Comprueba en una ventana privada que otra cuenta no puede entrar.
-7. Abre la URL `workers.dev` desde el celular e instálala desde el menú del navegador como acceso directo.
+5. Ejecuta `npx wrangler secret put APP_PASSWORD` y escribe una contraseña larga y única. Después ejecuta `npx wrangler secret put GEMINI_API_KEY` y escribe la clave de Gemini. Los valores deben quedar como secretos del Worker, nunca en `wrangler.jsonc` ni en el frontend.
+6. Abre la URL `workers.dev`, inicia sesión y comprueba que el panel se muestre. Cierra sesión y comprueba que los datos ya no aparezcan.
 
 La base y el contenido estarán en tu propia cuenta de Cloudflare, separados del panel anterior de `chatgpt.site`. Si Gemini alcanza su cuota o falla, la aplicación sigue funcionando y tienes **Respuesta base**.
 
 ## Prueba local
 
-Ejecuta `npm run build`. Copia `.dev.vars.example` a `.dev.vars` y reemplaza la clave ficticia de Gemini si deseas probar IA. Después ejecuta `npm run db:local` y `npm run dev`. Abre `http://localhost:8787`. El bloque `access.dev` simula localmente tu correo; en producción debes activar Access en el panel.
+Ejecuta `npm run build`. Copia `.dev.vars.example` a `.dev.vars`, cambia la contraseña ficticia y reemplaza la clave ficticia de Gemini si deseas probar IA. Después ejecuta `npm run db:local` y `npm run dev`. Abre `http://localhost:8787`.
 
 ## Límites actuales
 
