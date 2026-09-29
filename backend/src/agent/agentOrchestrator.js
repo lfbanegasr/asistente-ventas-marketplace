@@ -117,6 +117,16 @@ RESPONDE EXCLUSIVAMENTE UN OBJETO JSON con la siguiente estructura (sin formato 
 }`;
 }
 
+export function getActiveGeminiModels() {
+  const envModel = process.env.GEMINI_MODEL?.trim();
+  const models = [];
+  if (envModel && envModel !== 'gemini-2.5-flash-lite') {
+    models.push(envModel);
+  }
+  models.push('gemini-2.0-flash', 'gemini-1.5-flash');
+  return [...new Set(models)];
+}
+
 /**
  * CAPA 1: Traductor y Normalizador de Prompts / Audio
  */
@@ -133,19 +143,32 @@ export async function normalizeUserPrompt(rawCommand, ai, modelName, boliviaCont
   }
 
   const translatorInstruction = buildTranslatorInstruction(boliviaContext, catalogSummary);
+  const models = getActiveGeminiModels();
+  let response;
+
+  for (const m of models) {
+    try {
+      response = await ai.models.generateContent({
+        model: m,
+        contents: [{ role: 'user', parts: [{ text: clean }] }],
+        config: {
+          systemInstruction: translatorInstruction,
+          responseMimeType: 'application/json',
+          temperature: 0.1
+        }
+      });
+      if (response) break;
+    } catch (err) {
+      if (err.message?.includes('404') || err.message?.includes('NOT_FOUND') || err.message?.includes('no longer available')) {
+        console.warn(`[Capa 1] Modelo ${m} no disponible en Gemini API, intentando siguiente...`);
+        continue;
+      }
+      break;
+    }
+  }
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: [{ role: 'user', parts: [{ text: clean }] }],
-      config: {
-        systemInstruction: translatorInstruction,
-        responseMimeType: 'application/json',
-        temperature: 0.1
-      }
-    });
-
-    const text = response.text?.trim() || '';
+    const text = response?.text?.trim() || '';
     const parsed = JSON.parse(text);
 
     return {
@@ -311,26 +334,42 @@ export async function executeAgentPipeline(interpretation, ai, modelName, bolivi
   let finalReply = '';
   const MAX_AGENT_TURNS = 5;
 
+  const models = getActiveGeminiModels();
+
   for (let turn = 0; turn < MAX_AGENT_TURNS; turn++) {
     let response;
-    try {
-      response = await ai.models.generateContent({
-        model: modelName,
-        contents,
-        config: {
-          systemInstruction: executionInstruction,
-          temperature: 0.2,
-          tools: [{ functionDeclarations: toolsDeclarations }]
+    let apiErr;
+
+    for (const m of models) {
+      try {
+        response = await ai.models.generateContent({
+          model: m,
+          contents,
+          config: {
+            systemInstruction: executionInstruction,
+            temperature: 0.2,
+            tools: [{ functionDeclarations: toolsDeclarations }]
+          }
+        });
+        if (response) break;
+      } catch (err) {
+        apiErr = err;
+        if (err.message?.includes('404') || err.message?.includes('NOT_FOUND') || err.message?.includes('no longer available')) {
+          console.warn(`[Capa 2] Modelo ${m} no disponible en Gemini API, intentando siguiente...`);
+          continue;
         }
-      });
-    } catch (apiErr) {
-      console.warn('[Capa 2: Execution] Error llamando a Gemini SDK:', apiErr.message);
+        break;
+      }
+    }
+
+    if (!response) {
+      console.warn('[Capa 2: Execution] Error llamando a Gemini SDK:', apiErr?.message);
       const fallback = await executeDeterministicAction(interpretation, boliviaContext);
       if (fallback) {
         return fallback;
       }
       return {
-        reply: `⚠️ Gemini reportó un error: ${apiErr.message}. Verifica que tu variable GEMINI_API_KEY en Render sea válida (obtenla gratis en https://aistudio.google.com/app/apikey).`,
+        reply: `⚠️ Gemini reportó un error: ${apiErr?.message || 'Error de conexión'}. Asegúrate de colocar tu variable GEMINI_API_KEY en Render (dashboard.render.com).`,
         executed_tools: [],
         state_updated: false
       };

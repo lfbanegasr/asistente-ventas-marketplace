@@ -51,7 +51,8 @@ async function generateChatReply(product, message, history) {
   contents.push({ role: 'user', parts: [{ text: message }] });
 
   try {
-    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    let model = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
+    if (model === 'gemini-2.5-flash-lite') model = 'gemini-2.0-flash';
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
