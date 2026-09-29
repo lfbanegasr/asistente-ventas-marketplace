@@ -1,68 +1,169 @@
-# Mi mesa de ventas
+# Mi Mesa de Ventas — Arquitectura Desacoplada (Backend + Frontend + Móvil)
 
-Aplicación privada y ligera para gestionar consultas de Marketplace y WhatsApp Business desde el celular. Contiene fichas de producto, costos y precios, estado de cada consulta, entregas pendientes, ventas cobradas, exportación CSV y un asistente que propone respuestas con Gemini. El vendedor revisa y copia el texto; la aplicación no lee ni envía mensajes de Facebook o WhatsApp.
+Sistema privado para la gestión de consultas de Facebook Marketplace y WhatsApp Business en Bolivia. Permite controlar fichas de productos (costos, precios, disponibilidad), registrar consultas y pedidos de clientes, agendar entregas (en persona o por Yango), verificar cobros, exportar respaldos en CSV y generar borradores de respuestas inteligentes con IA (Google Gemini 2.5 Flash Lite) o respuestas base offline.
 
-La app Flutter para Android y iPhone está en [`mobile/`](mobile/README.md). Usa este mismo Worker y la misma base. Mientras Cloudflare Access siga activo en la cuenta, aparecerá antes del login propio.
+---
 
-## Flujo diario
+## 🏛️ Arquitectura del Proyecto
 
-1. **Productos:** revisa precio y disponibilidad antes de responder. Los tres productos iniciales son PB6010, PB225 y KNUP KP-5501TM. Todos empiezan en **Por confirmar**. Marca **Verifiqué esta disponibilidad ahora** solo después de comprobarla; las fichas antiguas empiezan sin marca de verificación.
-2. **Asistente:** abre una conversación por producto, pega el mensaje del cliente o pregunta libremente. El historial se guarda en D1 y aparece en web y APK. Gemini propone una respuesta; si falla o falta la clave, queda una respuesta base. Revisa el resultado, cópialo y envíalo tú por el chat donde te escribió el cliente.
-3. **Consultas:** registra a la persona si eligió producto o requiere seguimiento. Si confirmó precio y modalidad, marca **Confirmado**. Al comprar la unidad, marca **Comprado**. Al fijar hora y lugar, marca **Agendado**.
-4. **Entrega:** anota modalidad, lugar y fecha al agendar. Para Yango, cobra el producto antes de despacharlo. Confirma el pago cuando realmente se haya recibido y recién entonces marca **Entregado**. El margen se calcula con precio menos costo y otros gastos registrados.
-5. **Copia de datos:** usa **Exportar CSV** con frecuencia; guárdalo en un lugar privado.
+El proyecto está 100% desacoplado en tres capas independientes:
 
-En persona: UAGRM (módulos), Cine Center u otro punto público acordado, con pago al recibir. Para Yango: cotizar según barrio, cobrar el producto antes de despacharlo y cotizar el envío aparte. Prefiere martes, jueves y fines de semana al proponer opciones, pero confirma el día concreto antes de prometerlo. Ningún mensaje debe garantizar stock o fecha sin una verificación previa.
+```
+┌────────────────────────────────────────────────────────┐
+│                   BASE DE DATOS CLOUD                  │
+│       PostgreSQL en la Nube (Neon / Supabase)          │
+│   (100% Gratuito · Persistente · Sin Volúmenes de Disco)│
+└───────────────────────────▲────────────────────────────┘
+                            │
+                            │ (DATABASE_URL con SSL)
+                            │
+┌───────────────────────────┴────────────────────────────┐
+│                    BACKEND (REST API)                  │
+│               Node.js · Express · JWT Auth             │
+│    (Desplegable gratis en Render, Koyeb o Railway)     │
+└───────────────▲────────────────────────▲───────────────┘
+                │                        │
+                │                        │
+   (HTTPS / JSON con JWT)   (HTTPS / JSON con JWT)
+                │                        │
+┌───────────────┴────────┐      ┌────────┴───────────────┐
+│     FRONTEND (WEB)     │      │    APP MÓVIL (FLUTTER) │
+│     Vite · HTML · CSS  │      │     Android & iOS      │
+│  (Vercel o Netlify)    │      │  (Conexión directa API)│
+└────────────────────────┘      └────────────────────────┘
+```
 
-## Estructura y prioridades
+---
 
-Un Worker sirve la interfaz y la API privada; D1 guarda productos, consultas, entregas, pagos, conversaciones del asistente y el contador de uso de Gemini. Los secretos `APP_PASSWORD` y `GEMINI_API_KEY` quedan solo en el Worker. Messenger y WhatsApp quedan fuera: el vendedor revisa y copia cada borrador.
+## ☁️ Dónde Alojar la Base de Datos Gratis (Persistencia Real y Fácil Migración)
 
-La aplicación conserva las cuatro secciones. Los datos mínimos de una consulta son alias, canal, producto, estado, precio y costo; entrega, pago, gastos y notas se completan cuando correspondan. La creación de una consulta y cada turno de chat usan identificadores de petición para que un reintento no los duplique. No se requieren tienda pública ni variantes.
+Para evitar problemas con volúmenes de disco en servidores (que cobran, no se pueden migrar con facilidad y complican los respaldos), el backend utiliza **PostgreSQL Cloud**. El backend es **100% sin estado (stateless)**: puedes apagar, reiniciar o mover el servidor a otro proveedor y tus datos **nunca se pierden**.
 
-Aceptación de esta etapa: sin `APP_PASSWORD` no hay acceso a datos; una petición repetida crea una sola consulta o turno de chat; las fichas antiguas no se consideran verificadas; una entrega no se marca completada sin pago comprobado; y la respuesta base permanece disponible cuando Gemini falla. Antes de considerar producción lista, comprobar el despliegue real, el secreto, D1 y el acceso desde celular y PC.
+### Opción 1: Neon Serverless Postgres (⭐⭐⭐⭐⭐ La más recomendada)
+- **Capa Gratuita:** 0.5 GB de almacenamiento permanente, sin tarjeta de crédito.
+- **Ventaja clave:** Es "serverless". Cuando no hay consultas se suspende a costo cero, y cuando llega una consulta de la web o el celular se despierta en milisegundos. **Nunca se archiva ni se pausa por inactividad semanal**.
+- **Migración y Backups:** Compatible con `pg_dump`, DBeaver, TablePlus y tiene consola SQL web.
+- **Cómo crearla:**
+  1. Entra a [neon.tech](https://neon.tech) e inicia sesión con Google o GitHub.
+  2. Crea un proyecto nuevo (ejemplo: `ventas-db`).
+  3. Copia la cadena de conexión que te da en pantalla (empieza con `postgresql://...`).
+  4. Pégala en tu backend como variable `DATABASE_URL`.
 
-## Para ponerla en Internet
+### Opción 2: Supabase (⭐⭐⭐⭐⭐ Ideal si te gusta ver y editar datos en tablas)
+- **Capa Gratuita:** 500 MB de base de datos PostgreSQL, sin tarjeta de crédito.
+- **Ventaja clave:** Tiene una interfaz visual web tipo Excel/Airtable (Table Editor). Puedes entrar desde cualquier navegador, ver tus productos y clientes, editar cualquier celda con un clic y descargar en CSV o SQL en 1 clic.
+- **Nota:** En su plan gratuito, si pasa una semana completa sin ninguna consulta se pausa (se reactiva con 1 clic en su panel).
+- **Cómo crearla:**
+  1. Entra a [supabase.com](https://supabase.com) y crea una cuenta.
+  2. Crea una nueva organización y proyecto.
+  3. En **Project Settings → Database → Connection String**, copia la URI (usa el modo *Session* o *Pooled* en el puerto 6543 o 5432).
+  4. Pégala en tu backend como `DATABASE_URL`.
 
-Necesitas tu cuenta de Cloudflare y una contraseña única y aleatoria de al menos 16 caracteres guardada en el gestor de contraseñas del celular y la PC. El login propio permite autocompletado y mantiene una sesión durante siete días; normalmente basta desbloquear el gestor con huella, rostro o PIN del dispositivo. Un PIN corto escrito directamente en la web no protege suficientemente esta URL pública. La opción de passkeys requiere alta y recuperación adicionales, por lo que no forma parte de esta primera etapa. **Nunca pegues contraseñas ni claves API en chats o archivos públicos.**
+### Opción 3: Turso (LibSQL / SQLite en la Nube)
+- **Capa Gratuita:** 9 GB de almacenamiento y 500 bases de datos gratis.
+- Motor SQLite distribuido a nivel global.
 
-### Despliegue con GitHub y Cloudflare
+---
 
-El repositorio privado contiene solo este proyecto. Cloudflare puede conectarlo desde **Workers & Pages → Create application → Import a repository**. Selecciona el repositorio y configura:
+## 🚀 Dónde Alojar el Backend Gratis
 
-- **Worker name:** `asistente-ventas-marketplace` (igual que en `wrangler.jsonc`).
-- **Production branch:** `main`.
-- **Root directory:** `/`.
-- **Build command:** `npm run build`.
-- **Deploy command:** `npx wrangler deploy`.
+El backend vive en la carpeta [`backend/`](file:///d:/1%20VENTAS/Ventas%20Marketplace/asistente-ventas/backend). Solo requiere Node.js 20+ y se ejecuta sin volúmenes persistentes.
 
-Cloudflare puede crear la base D1 automáticamente a partir de `wrangler.jsonc`. El esquema inicial y las tres fichas se crean la primera vez que entras. La segunda migración añade la marca de disponibilidad; la tercera añade conversaciones. Ambas se aplican automáticamente de forma compatible con datos anteriores al abrir la app con sesión. En **Workers & Pages → tu Worker → Settings → Variables and Secrets**, comprueba si existe `APP_PASSWORD`; si falta, créalo como **Secret** y guarda el mismo valor directamente en tu gestor. `GEMINI_API_KEY` también debe ser un secreto del Worker. No hace falta revelar ninguno de los valores para comprobar si están configurados.
+### Opción 1: Render (Web Service Gratis)
+1. Ve a [render.com](https://render.com) y crea un nuevo **Web Service**.
+2. Conecta tu repositorio de GitHub.
+3. Configura:
+   - **Root Directory:** `backend`
+   - **Environment:** `Node`
+   - **Build Command:** `npm install`
+   - **Start Command:** `npm start`
+4. En **Environment Variables**, agrega:
+   - `APP_PASSWORD`: Contraseña secreta para entrar (mínimo 16 caracteres).
+   - `JWT_SECRET`: Cadena aleatoria de 32+ caracteres.
+   - `DATABASE_URL`: La URL de conexión de Neon o Supabase.
+   - `CORS_ORIGINS`: La URL donde esté tu frontend (ej: `https://tu-frontend.vercel.app,http://localhost:5173`).
+   - `GEMINI_API_KEY`: Tu API key gratuita de Google AI Studio (opcional).
 
-**Acceso de una sola pantalla:** Cloudflare Access se ejecuta antes del Worker; el código de Flutter o del login propio no puede saltarlo. Mantén Access activo mientras verificas el nuevo despliegue. Primero comprueba que `APP_PASSWORD` existe como secreto, que D1 está enlazada y que el despliegue de `main` terminó correctamente. Para probar el login propio antes de quitar Access, cambia temporalmente la política **Cloudflare account** por una regla **Allow** limitada a tu correo exacto con **One-time PIN**, entra y comprueba `/login`, apertura de datos, cierre de sesión y rechazo de `/api/state` sin sesión. Una vez hechas esas comprobaciones, en **Workers & Pages → tu Worker → Access** desactiva la protección de producción `workers.dev` de ese Worker y elimina cualquier aplicación Access que cubra el mismo hostname o ruta. Comprueba en una ventana privada que aparece directamente el login propio, tanto en PC como en APK. No desactives la ruta `workers.dev`; eso apagaría el enlace. Si `APP_PASSWORD` falta o el login falla, vuelve a activar Access hasta corregirlo. `OWNER_EMAIL` ya no se usa.
+### Opción 2: Koyeb (Eco Service Gratis)
+1. Ve a [koyeb.com](https://koyeb.com).
+2. Crea un servicio gratuito con origen GitHub.
+3. Apunta a la subcarpeta `backend` o usa el `Dockerfile` incluido (`backend/Dockerfile`).
+4. Añade las mismas variables de entorno.
 
-Si pierdes la contraseña guardada, entra a tu cuenta de Cloudflare por sus propios métodos de recuperación y cambia el secreto `APP_PASSWORD` por uno nuevo; eso invalida las sesiones anteriores. Guarda el nuevo valor en el gestor de ambos dispositivos. Si tampoco tienes acceso a Cloudflare, primero debes recuperar esa cuenta; la app no tiene una vía pública de recuperación que eluda el login.
+### Opción 3: Railway
+- Si prefieres Railway, ahora puedes desplegar el backend **sin necesidad de crear ningún volumen persistente**, ya que los datos viven en Neon o Supabase.
 
-Después de cada cambio en `main`, GitHub activará un nuevo despliegue. No subas `.dev.vars`, `.config`, `.npm-cache`, `.wrangler` ni `node_modules`: están excluidos por `.gitignore`.
+---
 
-### Alternativa desde la terminal
+## 🌐 Dónde Alojar el Frontend Web Gratis
 
-1. Abre una terminal en esta carpeta e instala las dependencias con `npm install`.
-2. Entra a Cloudflare con `npx wrangler login`.
-3. Ejecuta `npm run deploy`. Cloudflare creará el Worker y la base D1 definida en `wrangler.jsonc`. El Worker bloqueará los datos hasta que configures la contraseña.
-4. La base se inicializa al primer acceso autorizado. `npm run db:remote` también puede aplicar las migraciones manualmente; la segunda es idempotente.
-5. Ejecuta `npx wrangler secret put APP_PASSWORD` y escribe una contraseña larga y única. Después ejecuta `npx wrangler secret put GEMINI_API_KEY` y escribe la clave de Gemini. Los valores deben quedar como secretos del Worker, nunca en `wrangler.jsonc` ni en el frontend.
-6. Abre la URL `workers.dev`, inicia sesión y comprueba que el panel se muestre. Cierra sesión y comprueba que los datos ya no aparezcan.
+El frontend vive en [`frontend/`](file:///d:/1%20VENTAS/Ventas%20Marketplace/asistente-ventas/frontend) y es una Single Page Application moderna con Vite.
 
-La base y el contenido estarán en tu propia cuenta de Cloudflare, separados del panel anterior de `chatgpt.site`. Si Gemini alcanza su cuota o falla, el chat guarda una respuesta base.
+### Opción 1: Vercel (Recomendado)
+1. Ve a [vercel.com](https://vercel.com) y haz clic en **Add New Project**.
+2. Importa tu repositorio.
+3. En **Root Directory**, selecciona `frontend`.
+4. En **Environment Variables**, añade:
+   - `VITE_API_URL`: La URL pública de tu backend (ej: `https://mi-backend.onrender.com`).
+5. Haz clic en **Deploy**. Tendrás HTTPS automático y CDN global gratis.
 
-## Prueba local
+---
 
-Ejecuta `npm run build`. Copia `.dev.vars.example` a `.dev.vars`, cambia la contraseña ficticia y reemplaza la clave ficticia de Gemini si deseas probar IA. Después ejecuta `npm run db:local` y `npm run dev`. Abre `http://localhost:8787`.
+## 📱 App Móvil (Flutter)
 
-## Límites actuales
+La aplicación nativa para Android y iOS se encuentra en [`mobile/`](file:///d:/1%20VENTAS/Ventas%20Marketplace/asistente-ventas/mobile).
 
-- Las consultas se introducen manualmente; no hay integración oficial con chats de un perfil personal de Marketplace o con la app WhatsApp Business.
-- Un registro representa una unidad de un producto. Si un cliente pide varias unidades, regístralas por separado para mantener el margen correcto.
-- Los gastos se anotan por consulta. El resumen solo cuenta como margen cobrado una venta marcada **Entregado** y con pago verificado.
-- La capacidad y algunas características de las powerbanks siguen pendientes de comprobación. Actualiza las fichas cuando verifiques los productos.
-- En la capa gratuita de Gemini, Google indica que los datos pueden usarse para mejorar sus productos. Evita pegar nombres completos, números, direcciones exactas y comprobantes de pago. La aplicación elimina patrones comunes de números telefónicos y enlaces antes de enviarlos, pero no sustituye tu revisión.
+- **Sin intermediarios:** Se conecta directamente a la API REST del backend mediante llamadas HTTPS seguras con tokens JWT almacenados en el enclave seguro (`flutter_secure_storage`).
+- **Selector de Servidor en Login:** La pantalla de inicio de sesión incluye un selector expandible para configurar la URL del backend (por ejemplo: `https://mi-backend.onrender.com`), por lo que no es necesario recompilar la app si cambias de servidor.
+- **Compilación:**
+  ```bash
+  cd mobile
+  flutter pub get
+  flutter build apk --release
+  ```
+
+---
+
+## 💾 Respaldo y Migración de Datos (1 Clic)
+
+Tus datos nunca quedan atrapados:
+1. **Desde la App Web o Móvil:** En la sección *Consultas*, toca el botón **Exportar CSV** para descargar un archivo con todos los clientes, fechas, montos y estados.
+2. **Desde el Backend (Script automático):**
+   ```bash
+   cd backend
+   npm run backup
+   ```
+   Genera instantáneamente en `backend/backups/`:
+   - Un archivo `.json` con todas las tablas completas (productos, verificaciones de stock, consultas, chats y mensajes).
+   - Un archivo `.csv` estructurado con el historial de ventas y pedidos.
+3. **Desde PostgreSQL:** Puedes usar herramientas estándar como `pg_dump` o la consola de Supabase/Neon para exportar e importar en cualquier momento.
+
+---
+
+## 💻 Desarrollo Local
+
+### 1. Iniciar el Backend
+```bash
+cd backend
+npm install
+# Inicia con PostgreSQL en memoria temporal si no configuras DATABASE_URL
+npm run dev
+```
+Para ejecutar las pruebas automáticas del backend:
+```bash
+npm test
+```
+
+### 2. Iniciar el Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Abre en tu navegador: `http://localhost:5173`.
+
+### 3. Ejecutar la App Móvil
+```bash
+cd mobile
+flutter run
+```

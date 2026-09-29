@@ -1,0 +1,8 @@
+{
+  "name": "Mi mesa de ventas",
+  "short_name": "Ventas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f4ef",
+  "theme_color": "#172a3a"
+}
