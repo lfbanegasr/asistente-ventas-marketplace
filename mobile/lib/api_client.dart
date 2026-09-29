@@ -182,10 +182,9 @@ class ApiClient {
     }
     if (response.statusCode != expectedStatus &&
         !(response.statusCode == 200 && data.containsKey('duplicate'))) {
-      throw ApiException(
-        data['error']?.toString() ?? 'Error ${response.statusCode}',
-        response.statusCode,
-      );
+      final errorMsg = data['error']?.toString() ?? 'Error ${response.statusCode}';
+      final detailsMsg = data['details'] != null ? '\n${data['details']}' : '';
+      throw ApiException('$errorMsg$detailsMsg', response.statusCode);
     }
     return data;
   }

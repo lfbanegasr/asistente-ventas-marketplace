@@ -170,6 +170,18 @@ class _ChatScreenState extends State<ChatScreen> {
     return '${gen(8)}-${gen(4)}-4${gen(3)}-a${gen(3)}-${gen(12)}';
   }
 
+  static const _speechChannel = MethodChannel('com.lfbanegasr.mesa_ventas_mobile/speech');
+
+  Future<void> _startVoiceInput() async {
+    try {
+      final text = await _speechChannel.invokeMethod<String>('startListening');
+      if (text != null && text.trim().isNotEmpty) {
+        _inputController.text = text.trim();
+        _send();
+      }
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -297,7 +309,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Text(_error!, style: const TextStyle(color: Color(0xFF8F351F), fontSize: 13)),
           ),
 
-        // Composer
+        // Minimalist Composer
         Container(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFFE9EDE8)))),
@@ -313,30 +325,60 @@ class _ChatScreenState extends State<ChatScreen> {
                     onChanged: (v) => setState(() => _selectedProductId = v),
                   ),
                 ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _inputController,
-                      maxLines: null,
-                      maxLength: 1200,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _send(),
-                      decoration: const InputDecoration(
-                        hintText: 'Escribe tu pregunta...',
-                        counterText: '',
-                        isDense: true,
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F6F4),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: const Color(0xFFE2E7E2)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.mic, color: Color(0xFFDF7447), size: 22),
+                      onPressed: _sending ? null : _startVoiceInput,
+                      tooltip: 'Dictar por voz',
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _inputController,
+                        maxLines: null,
+                        maxLength: 1200,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _send(),
+                        decoration: const InputDecoration(
+                          hintText: 'Pregunta o redacta una respuesta...',
+                          hintStyle: TextStyle(fontSize: 14, color: Color(0xFF8B989D)),
+                          counterText: '',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          fillColor: Colors.transparent,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: _sending ? null : _send,
-                    child: _sending
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Enviar'),
-                  ),
-                ],
+                    InkWell(
+                      onTap: _sending ? null : _send,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(9),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFDF7447),
+                          shape: BoxShape.circle,
+                        ),
+                        child: _sending
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.arrow_upward, size: 17, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
               ),
             ],
           ),

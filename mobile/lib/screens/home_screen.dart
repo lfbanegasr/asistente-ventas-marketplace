@@ -1010,7 +1010,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const _speechChannel = MethodChannel('com.lfbanegasr.mesa_ventas_mobile/speech');
 
-  // ── Voice & Two-Layer Agent Modal ─────────────────────
+  // ── Minimalist & Comfortable Voice Assistant Modal ────────────────
   void _openVoiceAgentModal() {
     final cmdCtrl = TextEditingController();
     bool busy = false;
@@ -1021,8 +1021,9 @@ class _HomeScreenState extends State<HomeScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
@@ -1076,11 +1077,33 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           }
 
+          Widget buildPill(String title, String prompt) {
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ActionChip(
+                elevation: 0,
+                backgroundColor: const Color(0xFFF3F5F2),
+                side: const BorderSide(color: Color(0xFFE2E7E2)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                label: Text(
+                  title,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF2C3E47)),
+                ),
+                onPressed: (busy || listening)
+                    ? null
+                    : () {
+                        cmdCtrl.text = prompt;
+                        submitCommand(prompt);
+                      },
+              ),
+            );
+          }
+
           return Padding(
             padding: EdgeInsets.only(
               left: 20,
               right: 20,
-              top: 20,
+              top: 12,
               bottom: bottomInset + 20,
             ),
             child: SingleChildScrollView(
@@ -1088,227 +1111,242 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Subtle drag handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+
+                  // Minimal Header
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF172A3A),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(Icons.mic, color: Color(0xFFFFB887), size: 24),
+                          Text(
+                            'Asistente Inteligente',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF172A3A)),
                           ),
-                          const SizedBox(width: 12),
-                          const Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Asistente por Voz',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                'Procesamiento en 2 Capas (Santa Cruz)',
-                                style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
-                              ),
-                            ],
+                          Text(
+                            'Voz y acciones rápidas en Santa Cruz',
+                            style: TextStyle(fontSize: 12, color: Color(0xFF75858A)),
                           ),
                         ],
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close),
+                        icon: const Icon(Icons.close, size: 20, color: Color(0xFF75858A)),
                         onPressed: () => Navigator.of(ctx).pop(),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
 
-                  // Native Android voice dictation trigger
-                  InkWell(
-                    onTap: (busy || listening) ? null : startListening,
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: listening ? const Color(0xFFDF7447) : const Color(0xFF172A3A),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            listening ? Icons.graphic_eq : Icons.mic,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 10),
-                          Flexible(
-                            child: Text(
-                              listening
-                                  ? 'Escuchando tu voz…'
-                                  : '🎙️ Toca para hablar (Dictado por Voz)',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
+                  const SizedBox(height: 12),
+
+                  // Hero Voice Orb
+                  Center(
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: (busy || listening) ? null : startListening,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            width: 74,
+                            height: 74,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                colors: listening
+                                    ? [const Color(0xFFDF7447), const Color(0xFFE88A64)]
+                                    : [const Color(0xFF172A3A), const Color(0xFF2C4456)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
-                              overflow: TextOverflow.ellipsis,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: (listening ? const Color(0xFFDF7447) : const Color(0xFF172A3A)).withValues(alpha: 0.3),
+                                  blurRadius: listening ? 18 : 10,
+                                  spreadRadius: listening ? 3 : 1,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              listening ? Icons.graphic_eq : Icons.mic,
+                              color: Colors.white,
+                              size: 32,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          listening
+                              ? 'Escuchando tu voz…'
+                              : (busy ? 'Procesando tu orden…' : 'Toca el micrófono para hablar'),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: listening ? const Color(0xFFDF7447) : const Color(0xFF55656B),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: cmdCtrl,
-                    maxLines: 2,
-                    decoration: InputDecoration(
-                      hintText: 'O escribe aquí tu orden (ej: Agendá a Juan Carlos del PB225 vía Yango...)',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFDF7447), width: 2),
-                      ),
-                      filled: true,
-                      fillColor: const Color(0xFFF9FAFB),
+                  const SizedBox(height: 16),
+
+                  // Minimal Pill Input Bar
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF4F6F4),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: const Color(0xFFE0E5E0)),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: cmdCtrl,
+                            decoration: const InputDecoration(
+                              hintText: 'O escribe tu orden aquí...',
+                              hintStyle: TextStyle(fontSize: 13, color: Color(0xFF8B989D)),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              fillColor: Colors.transparent,
+                              contentPadding: EdgeInsets.symmetric(vertical: 10),
+                            ),
+                            onSubmitted: (busy || listening) ? null : (v) => submitCommand(v),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: (busy || listening) ? null : () => submitCommand(cmdCtrl.text),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.all(9),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFDF7447),
+                              shape: BoxShape.circle,
+                            ),
+                            child: busy
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Icon(Icons.arrow_upward, size: 17, color: Colors.white),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                      ActionChip(
-                        avatar: const Text('📦'),
-                        label: const Text('Agendar PB225 Yango'),
-                        onPressed: () {
-                          cmdCtrl.text = 'Agendá consulta para Juan Carlos del PB225 para este viernes a las 4 de la tarde vía Yango en el 4to anillo radial 19';
-                          submitCommand(cmdCtrl.text);
-                        },
-                      ),
-                      ActionChip(
-                        avatar: const Text('🏷️'),
-                        label: const Text('Subir precio PB225'),
-                        onPressed: () {
-                          cmdCtrl.text = 'Subile 10 pesos al PB225 y anotá 4 unidades en mano';
-                          submitCommand(cmdCtrl.text);
-                        },
-                      ),
-                      ActionChip(
-                        avatar: const Text('📊'),
-                        label: const Text('Margen de hoy'),
-                        onPressed: () {
-                          cmdCtrl.text = '¿Cuánto margen cobrado y ventas llevamos hoy en Santa Cruz?';
-                          submitCommand(cmdCtrl.text);
-                        },
-                      ),
-                      ActionChip(
-                        avatar: const Text('💬'),
-                        label: const Text('Redactar respuesta'),
-                        onPressed: () {
-                          cmdCtrl.text = 'Redactale respuesta al cliente del PB225 que pide rebaja y pregunta por envío';
-                          submitCommand(cmdCtrl.text);
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  ElevatedButton.icon(
-                    onPressed: (busy || listening) ? null : () => submitCommand(cmdCtrl.text),
-                    icon: busy
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send),
-                    label: Text(busy ? 'Procesando en dos capas…' : 'Ejecutar comando'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFDF7447),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+
+                  const SizedBox(height: 12),
+
+                  // Quick Suggestion Chips (Horizontal Minimal Scroll)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        buildPill('📦 Agendar Yango', 'Agendá para Juan Carlos del PB225 este viernes 4pm vía Yango'),
+                        buildPill('🏷️ Subir precio', 'Subile 10 pesos al PB225 y anotá 4 unidades en mano'),
+                        buildPill('📊 Balance de hoy', '¿Cuánto margen cobrado y ventas llevamos hoy?'),
+                        buildPill('💬 Redactar', 'Redactale al cliente del PB225 que pide rebaja'),
+                      ],
                     ),
                   ),
+
+                  // Error Box
                   if (errorText != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF0E9),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFF2C9B8)),
-                      ),
-                      child: Text(
-                        '⚠️ $errorText',
-                        style: const TextStyle(color: Color(0xFF8F351F), fontSize: 13),
-                      ),
-                    ),
-                  ],
-                  if (lastResult != null) ...[
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAF8),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFDBE3DB)),
+                        color: const Color(0xFFFFF2EC),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF3CBB9)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (lastResult!['interpretation'] != null) ...[
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFEDF4F0),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    '🧠 Capa 1: ${(lastResult!['interpretation']['ambito'] ?? 'general').toString().toUpperCase()}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF2C7569),
-                                    ),
-                                  ),
-                                ),
-                                if (lastResult!['state_updated'] == true) ...[
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFEEF0F5),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: const Text(
-                                      'BD Actualizada',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF65718A),
-                                      ),
-                                    ),
-                                  ),
+                          Row(
+                            children: const [
+                              Icon(Icons.info_outline, color: Color(0xFFC04724), size: 18),
+                              SizedBox(width: 8),
+                              Text('Aviso del Asistente', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF8F351F))),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(errorText!, style: const TextStyle(color: Color(0xFF8F351F), fontSize: 13, height: 1.3)),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  // Response Bubble (Clean, Modern Chat Style)
+                  if (lastResult != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7FAF8),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFDEE5E0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Row(
+                                children: [
+                                  Text('✦', style: TextStyle(color: Color(0xFFDF7447), fontSize: 16)),
+                                  SizedBox(width: 6),
+                                  Text('Respuesta', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF53646B))),
                                 ],
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Intención: ${lastResult!['interpretation']['intencion'] ?? ''}',
-                              style: const TextStyle(fontSize: 12, color: Color(0xFF55676E)),
-                            ),
-                            const Divider(height: 16),
-                          ],
+                              ),
+                              if (lastResult!['state_updated'] == true)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE2EFE7),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text('✓ BD Actualizada', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2C7569))),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
                           Text(
                             lastResult!['reply'] ?? '',
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF172A3A)),
+                            style: const TextStyle(fontSize: 15, height: 1.45, color: Color(0xFF172A3A), fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  foregroundColor: const Color(0xFF172A3A),
+                                ),
+                                icon: const Icon(Icons.copy, size: 14),
+                                label: const Text('Copiar', style: TextStyle(fontSize: 12)),
+                                onPressed: () {
+                                  Clipboard.setData(ClipboardData(text: lastResult!['reply'] ?? ''));
+                                  _showMessage('Copiado al portapapeles', success: true);
+                                },
+                              ),
+                            ],
                           ),
                         ],
                       ),

@@ -8,7 +8,8 @@ const router = Router();
 router.post('/command', async (req, res) => {
   if (!process.env.GEMINI_API_KEY) {
     return res.status(503).json({
-      error: 'La clave GEMINI_API_KEY no está configurada en el servidor. Configúrala en Render o en tu archivo .env.'
+      error: 'Falta configurar GEMINI_API_KEY en el servidor.',
+      details: 'Ve a dashboard.render.com > Tu servicio Backend > Environment Variables y agrega la variable GEMINI_API_KEY con tu clave gratuita de Google AI Studio (aistudio.google.com).'
     });
   }
 
