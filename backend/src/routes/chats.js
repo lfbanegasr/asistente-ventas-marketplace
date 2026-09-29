@@ -51,8 +51,11 @@ async function generateChatReply(product, message, history) {
   contents.push({ role: 'user', parts: [{ text: message }] });
 
   try {
-    let model = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
-    if (model === 'gemini-2.5-flash-lite') model = 'gemini-2.0-flash';
+    let model = (process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite').trim();
+    // Skip all deprecated models (discontinued June 2026)
+    if (['gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.5-flash'].includes(model)) {
+      model = 'gemini-3.5-flash-lite';
+    }
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },

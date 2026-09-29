@@ -3,59 +3,60 @@ import { query, queryFirst, run } from '../database.js';
 
 /**
  * Declaraciones de herramientas para Gemini Function Calling (SDK @google/genai)
+ * IMPORTANTE: El SDK requiere `parameters` (NO `parametersJsonSchema`) y tipos en MAYÚSCULAS.
  */
 export const toolsDeclarations = [
   {
     name: 'crear_consulta',
     description: 'Registra una nueva consulta o pedido de cliente (lead) en el sistema. Extrae alias, producto, canal, fecha/hora pactada, modalidad de entrega, lugar y notas.',
-    parametersJsonSchema: {
-      type: 'object',
+    parameters: {
+      type: 'OBJECT',
       properties: {
         alias: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nombre o alias del cliente (ej: "Juan Carlos", "Fernanda R.").'
         },
         product_id: {
-          type: 'string',
+          type: 'STRING',
           description: 'ID exacto del producto en catálogo (ej: "pb225", "pb6010", "kp5501"). Mapear semánticamente el nombre solicitado al ID del catálogo.'
         },
         channel: {
-          type: 'string',
+          type: 'STRING',
           description: 'Canal de procedencia del cliente.',
           enum: ['Marketplace', 'WhatsApp', 'Otro']
         },
         delivery_mode: {
-          type: 'string',
+          type: 'STRING',
           description: 'Modalidad de entrega pactada.',
           enum: ['por_definir', 'persona', 'yango']
         },
         delivery_place: {
-          type: 'string',
+          type: 'STRING',
           description: 'Lugar pactado o dirección de referencia (ej: "Cine Center", "UAGRM módulos", "4to anillo radial 19").'
         },
         delivery_at: {
-          type: 'string',
+          type: 'STRING',
           description: 'Fecha y hora acordadas en formato ISO local boliviano: YYYY-MM-DDTHH:mm (ej: "2026-10-03T16:00"). Debe convertirse desde expresiones relativas.'
         },
         status: {
-          type: 'string',
+          type: 'STRING',
           description: 'Estado del pedido. Si ya se definió lugar y hora, usar "agendado" o "confirmado".',
           enum: ['consulta', 'interesado', 'confirmado', 'comprado', 'agendado', 'entregado', 'cancelado']
         },
         amount: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Precio acordado en Bolivianos (Bs). Si no se negoció, omitir para usar el precio de venta del producto.'
         },
         expenses: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Gastos de envío o empaque en Bs (ej: costo de Yango o pasajes). Por defecto 0.'
         },
         paid: {
-          type: 'boolean',
+          type: 'BOOLEAN',
           description: 'Indica si el pago ya fue recibido y verificado por QR/efectivo. Para Yango es requisito antes del despacho.'
         },
         notes: {
-          type: 'string',
+          type: 'STRING',
           description: 'Notas adicionales, referencias de ubicación, teléfono o peticiones específicas del cliente.'
         }
       },
@@ -65,49 +66,49 @@ export const toolsDeclarations = [
   {
     name: 'actualizar_consulta',
     description: 'Actualiza los datos o estado de una consulta/pedido existente (cambiar a confirmado, agendado, entregado, registrar pago verificado, cambiar fecha o lugar).',
-    parametersJsonSchema: {
-      type: 'object',
+    parameters: {
+      type: 'OBJECT',
       properties: {
         lead_id: {
-          type: 'string',
+          type: 'STRING',
           description: 'ID de la consulta en la base de datos si se conoce.'
         },
         alias: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nombre o alias del cliente para buscar la consulta si no se especificó lead_id.'
         },
         status: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nuevo estado de la consulta.',
           enum: ['consulta', 'interesado', 'confirmado', 'comprado', 'agendado', 'entregado', 'cancelado']
         },
         paid: {
-          type: 'boolean',
+          type: 'BOOLEAN',
           description: 'Marcar el pago como verificado (true) o pendiente (false).'
         },
         delivery_mode: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nueva modalidad de entrega.',
           enum: ['por_definir', 'persona', 'yango']
         },
         delivery_place: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nuevo lugar o dirección pactada.'
         },
         delivery_at: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nueva fecha y hora en formato YYYY-MM-DDTHH:mm.'
         },
         amount: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Nuevo monto total acordado en Bs.'
         },
         expenses: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Nuevos gastos en Bs.'
         },
         notes: {
-          type: 'string',
+          type: 'STRING',
           description: 'Notas actualizadas o añadidas.'
         }
       }
@@ -116,19 +117,19 @@ export const toolsDeclarations = [
   {
     name: 'eliminar_consulta',
     description: 'Elimina un pedido o consulta por su ID o por el alias del cliente tras confirmación.',
-    parametersJsonSchema: {
-      type: 'object',
+    parameters: {
+      type: 'OBJECT',
       properties: {
         lead_id: {
-          type: 'string',
+          type: 'STRING',
           description: 'ID de la consulta a eliminar.'
         },
         alias: {
-          type: 'string',
+          type: 'STRING',
           description: 'Alias del cliente para buscar y eliminar la consulta.'
         },
         confirm: {
-          type: 'boolean',
+          type: 'BOOLEAN',
           description: 'Confirmación obligatoria (true) para proceder con el borrado.'
         }
       },
@@ -138,48 +139,48 @@ export const toolsDeclarations = [
   {
     name: 'crear_producto',
     description: 'Agrega un nuevo producto al catálogo de ventas con sus especificaciones y costos.',
-    parametersJsonSchema: {
-      type: 'object',
+    parameters: {
+      type: 'OBJECT',
       properties: {
         id: {
-          type: 'string',
+          type: 'STRING',
           description: 'Identificador corto en minúsculas (slug, ej: "pb300", "auricular-f9"). Si no se envía se generará automáticamente.'
         },
         name: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nombre comercial del producto (ej: "Power Bank Yesido PB300 20000mAh").'
         },
         cost: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Costo de adquisición en Bolivianos (Bs).'
         },
         price: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Precio de venta al público anunciado en Bolivianos (Bs).'
         },
         min_price: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Precio mínimo interno en Bolivianos (Bs) por debajo del cual nunca se vende ni se hace rebaja.'
         },
         availability: {
-          type: 'string',
+          type: 'STRING',
           description: 'Disponibilidad física del producto.',
           enum: ['en_mano', 'proveedor_confirmado', 'por_confirmar']
         },
         available_units: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Cantidad de unidades en mano (si availability es "en_mano" debe ser >= 1, de lo contrario 0).'
         },
         ready_date: {
-          type: 'string',
+          type: 'STRING',
           description: 'Fecha estimada de disponibilidad en formato YYYY-MM-DD.'
         },
         facts: {
-          type: 'string',
+          type: 'STRING',
           description: 'Características técnicas comprobadas y advertencias de no prometer datos no verificados.'
         },
         is_active: {
-          type: 'boolean',
+          type: 'BOOLEAN',
           description: 'Si el producto está activo y visible para la venta (por defecto true).'
         }
       },
@@ -189,48 +190,48 @@ export const toolsDeclarations = [
   {
     name: 'actualizar_producto',
     description: 'Modifica los precios, stock disponible, estado de disponibilidad o visibilidad (activo/oculto) de un producto en catálogo.',
-    parametersJsonSchema: {
-      type: 'object',
+    parameters: {
+      type: 'OBJECT',
       properties: {
         product_id: {
-          type: 'string',
+          type: 'STRING',
           description: 'ID o slug del producto a actualizar (ej: "pb225").'
         },
         name: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nuevo nombre comercial del producto.'
         },
         cost: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Nuevo costo en Bs.'
         },
         price: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Nuevo precio de venta en Bs.'
         },
         min_price: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Nuevo precio mínimo interno en Bs.'
         },
         availability: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nueva disponibilidad.',
           enum: ['en_mano', 'proveedor_confirmado', 'por_confirmar']
         },
         available_units: {
-          type: 'number',
+          type: 'NUMBER',
           description: 'Nuevo número de unidades en stock físico.'
         },
         ready_date: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nueva fecha disponible YYYY-MM-DD.'
         },
         facts: {
-          type: 'string',
+          type: 'STRING',
           description: 'Nuevos datos técnicos o notas.'
         },
         is_active: {
-          type: 'boolean',
+          type: 'BOOLEAN',
           description: 'Marcar como activo (true) o inactivo/oculto (false).'
         }
       },
@@ -240,16 +241,16 @@ export const toolsDeclarations = [
   {
     name: 'consultar_metricas',
     description: 'Calcula y devuelve métricas del negocio: margen cobrado hoy, entregas agendadas para hoy/mañana, resumen general o stock crítico en Santa Cruz.',
-    parametersJsonSchema: {
-      type: 'object',
+    parameters: {
+      type: 'OBJECT',
       properties: {
         metric_type: {
-          type: 'string',
+          type: 'STRING',
           description: 'Tipo de consulta o métrica solicitada.',
           enum: ['ventas_hoy', 'margen_hoy', 'entregas_agendadas', 'resumen_general', 'stock_critico']
         },
         date: {
-          type: 'string',
+          type: 'STRING',
           description: 'Fecha específica a consultar en formato YYYY-MM-DD (por defecto hoy en Bolivia).'
         }
       },
@@ -259,19 +260,19 @@ export const toolsDeclarations = [
   {
     name: 'redactar_respuesta',
     description: 'Redacta una respuesta comercial para copiar y enviar al cliente en WhatsApp o Marketplace, aplicando reglas de Santa Cruz (Yango prepago, entrega presencial y precios mínimos).',
-    parametersJsonSchema: {
-      type: 'object',
+    parameters: {
+      type: 'OBJECT',
       properties: {
         product_id: {
-          type: 'string',
+          type: 'STRING',
           description: 'ID del producto consultado por el cliente.'
         },
         customer_message: {
-          type: 'string',
+          type: 'STRING',
           description: 'Texto o mensaje del cliente que se quiere responder.'
         },
         goal: {
-          type: 'string',
+          type: 'STRING',
           description: 'Objetivo de la respuesta (ej: "responder precio", "ofrecer rebaja", "coordinar entrega yango", "aclarar características").'
         }
       },

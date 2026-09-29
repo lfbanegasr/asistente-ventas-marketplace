@@ -105,7 +105,7 @@ ${catalogSummary}
 REGLAS DE RESOLUCIÓN DE ENTIDADES:
 - Identifica el producto en base al catálogo y asigna su "product_id" exacto (ej: "el pb225" -> "pb225", "auricular f9" -> "f9-tws").
 - Convierte cualquier fecha/hora relativa ("mañana a las 4pm", "este viernes a las 16:30", "hoy a mediodía") a fecha ISO boliviana YYYY-MM-DDTHH:mm usando la fecha de hoy (${bolivia.isoDate}).
-- Identifica modalidades de entrega: "persona" (UAGRM, Cine Center, presencial) o "yango" (envío, moto, delivery).
+- Identifica modalidades de entrega: "persona" (UAGRM zona módulos, Cine Center, presencial) o "yango" (envío, moto, delivery).
 
 RESPONDE EXCLUSIVAMENTE UN OBJETO JSON con la siguiente estructura (sin formato Markdown adicional):
 {
@@ -117,14 +117,49 @@ RESPONDE EXCLUSIVAMENTE UN OBJETO JSON con la siguiente estructura (sin formato 
 }`;
 }
 
+/**
+ * Lista priorizada de modelos Gemini que están activos y disponibles.
+ * Septiembre 2026: gemini-2.0-flash y gemini-2.5-flash-lite están DISCONTINUADOS.
+ * Los modelos vigentes son: gemini-3.5-flash-lite, gemini-3.8-flash
+ */
+const DEPRECATED_MODELS = new Set([
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+  'gemini-2.5-flash',
+]);
+
 export function getActiveGeminiModels() {
   const envModel = process.env.GEMINI_MODEL?.trim();
   const models = [];
-  if (envModel && envModel !== 'gemini-2.5-flash-lite') {
+
+  // Only add the env model if it's NOT a known deprecated one
+  if (envModel && !DEPRECATED_MODELS.has(envModel)) {
     models.push(envModel);
   }
-  models.push('gemini-2.0-flash', 'gemini-1.5-flash');
+
+  // Current working models as of September 2026
+  models.push('gemini-3.5-flash-lite', 'gemini-3.8-flash');
   return [...new Set(models)];
+}
+
+/**
+ * Safely extract text from a Gemini SDK response
+ */
+function extractResponseText(response) {
+  try {
+    // The @google/genai SDK v2.x exposes .text as a getter on the response
+    if (typeof response?.text === 'string') return response.text.trim();
+    // Fallback: dig into candidates
+    const parts = response?.candidates?.[0]?.content?.parts;
+    if (parts) {
+      return parts.map(p => p.text || '').join('').trim();
+    }
+  } catch {
+    // ignore accessor errors
+  }
+  return '';
 }
 
 /**
@@ -145,9 +180,11 @@ export async function normalizeUserPrompt(rawCommand, ai, modelName, boliviaCont
   const translatorInstruction = buildTranslatorInstruction(boliviaContext, catalogSummary);
   const models = getActiveGeminiModels();
   let response;
+  let lastError;
 
   for (const m of models) {
     try {
+      console.log(`[Capa 1] Intentando modelo: ${m}`);
       response = await ai.models.generateContent({
         model: m,
         contents: [{ role: 'user', parts: [{ text: clean }] }],
@@ -157,18 +194,21 @@ export async function normalizeUserPrompt(rawCommand, ai, modelName, boliviaCont
           temperature: 0.1
         }
       });
-      if (response) break;
-    } catch (err) {
-      if (err.message?.includes('404') || err.message?.includes('NOT_FOUND') || err.message?.includes('no longer available')) {
-        console.warn(`[Capa 1] Modelo ${m} no disponible en Gemini API, intentando siguiente...`);
-        continue;
+      if (response) {
+        console.log(`[Capa 1] Modelo ${m} respondió exitosamente.`);
+        break;
       }
-      break;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Capa 1] Modelo ${m} falló: ${err.message}`);
+      // Always try the next model on any API error
+      continue;
     }
   }
 
   try {
-    const text = response?.text?.trim() || '';
+    const text = extractResponseText(response);
+    if (!text) throw new Error('Empty response');
     const parsed = JSON.parse(text);
 
     return {
@@ -180,6 +220,7 @@ export async function normalizeUserPrompt(rawCommand, ai, modelName, boliviaCont
     };
   } catch (err) {
     console.warn('[Capa 1: Normalizador] Falló el parsing JSON de normalización, usando fallback directo:', err.message);
+    if (lastError) console.warn('[Capa 1: Normalizador] Último error de API:', lastError.message);
     return {
       ambito: 'consultas',
       intencion: 'Procesar instrucción',
@@ -230,9 +271,9 @@ export async function executeDeterministicAction(interpretation, boliviaContext)
   try {
     // 1. Balance o métricas
     if (norm.includes('margen') || norm.includes('ganancia') || norm.includes('cuanto') || norm.includes('cuánto') || norm.includes('balance') || norm.includes('ventas')) {
-      const res = await executeTool('consultar_metricas', { tipo_consulta: 'balance_hoy' });
+      const res = await executeTool('consultar_metricas', { metric_type: 'resumen_general' });
       return {
-        reply: `📊 Resumen de hoy: ${res.datos?.entregas_hoy || 0} entregas completadas, margen cobrado: Bs ${res.datos?.margen_cobrado_hoy || 0}.`,
+        reply: `📊 Resumen de hoy: ${res.entregas_pendientes_hoy || 0} entregas pendientes, margen cobrado: Bs ${res.margen_cobrado_hoy_bs || 0}, venta total: Bs ${res.venta_total_hoy_bs || 0}.`,
         executed_tools: [{ name: 'consultar_metricas', result: res }],
         state_updated: false
       };
@@ -240,9 +281,9 @@ export async function executeDeterministicAction(interpretation, boliviaContext)
 
     // 2. Entregas pendientes o agenda
     if (norm.includes('entregas') || norm.includes('pendientes') || norm.includes('carreras') || norm.includes('agenda')) {
-      const res = await executeTool('consultar_metricas', { tipo_consulta: 'proximas_entregas' });
+      const res = await executeTool('consultar_metricas', { metric_type: 'entregas_agendadas' });
       return {
-        reply: `📦 Próximas entregas: ${res.mensaje || 'Revisa la lista de Consultas.'}`,
+        reply: `📦 Entregas agendadas: ${res.total_agendadas || 0} pendientes.${res.entregas?.length ? '\n' + res.entregas.map(e => `• ${e.alias} — ${e.producto} (${e.modalidad}) ${e.hora || 'sin hora'}`).join('\n') : ''}`,
         executed_tools: [{ name: 'consultar_metricas', result: res }],
         state_updated: false
       };
@@ -274,7 +315,7 @@ export async function executeDeterministicAction(interpretation, boliviaContext)
 
       const res = await executeTool('actualizar_producto', updateArgs);
       return {
-        reply: `✅ Catálogo actualizado: ${matchedProduct.name} ahora a Bs ${res.datos?.price ?? matchedProduct.price} (${res.datos?.available_units ?? matchedProduct.available_units} u. en mano).`,
+        reply: `✅ Catálogo actualizado: ${matchedProduct.name} ahora a Bs ${res.price ?? matchedProduct.price} (${res.available_units ?? matchedProduct.available_units} u. en mano).`,
         executed_tools: [{ name: 'actualizar_producto', args: updateArgs, result: res }],
         state_updated: true
       };
@@ -295,7 +336,7 @@ export async function executeDeterministicAction(interpretation, boliviaContext)
       const leadArgs = {
         alias: clientName,
         product_id: prodId,
-        channel: norm.includes('wsp') || norm.includes('whatsapp') ? 'whatsapp' : 'marketplace',
+        channel: norm.includes('wsp') || norm.includes('whatsapp') ? 'WhatsApp' : 'Marketplace',
         delivery_mode: isYango ? 'yango' : 'persona',
         delivery_place: place,
         delivery_at: `${boliviaContext.isoDate}T16:00`,
@@ -342,6 +383,7 @@ export async function executeAgentPipeline(interpretation, ai, modelName, bolivi
 
     for (const m of models) {
       try {
+        console.log(`[Capa 2] Intentando modelo: ${m} (turno ${turn + 1})`);
         response = await ai.models.generateContent({
           model: m,
           contents,
@@ -351,25 +393,26 @@ export async function executeAgentPipeline(interpretation, ai, modelName, bolivi
             tools: [{ functionDeclarations: toolsDeclarations }]
           }
         });
-        if (response) break;
+        if (response) {
+          console.log(`[Capa 2] Modelo ${m} respondió exitosamente.`);
+          break;
+        }
       } catch (err) {
         apiErr = err;
-        if (err.message?.includes('404') || err.message?.includes('NOT_FOUND') || err.message?.includes('no longer available')) {
-          console.warn(`[Capa 2] Modelo ${m} no disponible en Gemini API, intentando siguiente...`);
-          continue;
-        }
-        break;
+        console.warn(`[Capa 2] Modelo ${m} falló: ${err.message}`);
+        // Always try next model
+        continue;
       }
     }
 
     if (!response) {
-      console.warn('[Capa 2: Execution] Error llamando a Gemini SDK:', apiErr?.message);
+      console.warn('[Capa 2: Execution] Todos los modelos fallaron. Último error:', apiErr?.message);
       const fallback = await executeDeterministicAction(interpretation, boliviaContext);
       if (fallback) {
         return fallback;
       }
       return {
-        reply: `⚠️ Gemini reportó un error: ${apiErr?.message || 'Error de conexión'}. Asegúrate de colocar tu variable GEMINI_API_KEY en Render (dashboard.render.com).`,
+        reply: `⚠️ No se pudo conectar con Gemini (${apiErr?.message || 'Error de conexión'}). Verifica tu GEMINI_API_KEY en Render (dashboard.render.com > Environment).`,
         executed_tools: [],
         state_updated: false
       };
@@ -424,7 +467,7 @@ export async function executeAgentPipeline(interpretation, ai, modelName, bolivi
       // Continúa el loop para el turno de síntesis verbal final
     } else {
       // Síntesis conversacional final completada
-      finalReply = response.text?.trim() || candidate.content.parts?.map(p => p.text || '').join('').trim();
+      finalReply = extractResponseText(response);
       break;
     }
   }
@@ -471,7 +514,12 @@ export async function runAgentCommand(userCommand) {
 
   const boliviaContext = getBoliviaContext();
   const catalogSummary = await getCatalogSummary();
-  const modelName = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+
+  // Force a working model — ignore deprecated env values
+  const activeModels = getActiveGeminiModels();
+  const modelName = activeModels[0];
+  console.log(`[Agent] Modelo principal seleccionado: ${modelName} (de ${activeModels.length} disponibles)`);
+
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
   // ═══════════════════════════════════════════════════════════════
