@@ -2,7 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 
+async function setupProxy() {
+  try {
+    const { ProxyAgent, setGlobalDispatcher } = await import('undici');
+    setGlobalDispatcher(new ProxyAgent('http://127.0.0.1:8989'));
+  } catch {
+    // proxy not needed or undici not found
+  }
+}
+
 async function main() {
+  await setupProxy();
   console.log('Obteniendo credenciales de GitHub...');
   const credsRaw = execSync('git credential fill', {
     input: 'protocol=https\nhost=github.com\n\n',
@@ -93,8 +103,7 @@ async function main() {
     headers: {
       Authorization: `Bearer ${token}`,
       'User-Agent': 'Node-Release-Script',
-      'Content-Type': 'application/vnd.android.package-archive',
-      'Content-Length': apkStats.size.toString()
+      'Content-Type': 'application/vnd.android.package-archive'
     },
     body: fileBuffer
   });
