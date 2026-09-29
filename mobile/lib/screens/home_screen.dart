@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
 import '../main.dart';
@@ -670,7 +671,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
           // Hero card
           Container(
@@ -710,7 +711,7 @@ class _HomeScreenState extends State<HomeScreen> {
             physics: const NeverScrollableScrollPhysics(),
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
-            childAspectRatio: 2.2,
+            childAspectRatio: 1.65,
             children: [
               _metricCard('Consultas activas', '${open.length}'),
               _metricCard('Confirmados', '${confirmed.length}'),
@@ -740,15 +741,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _metricCard(String label, String value) {
     return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFE0E5DF)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF68787B))),
-            const SizedBox(height: 6),
-            Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.8)),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF68787B)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.8),
+              ),
+            ),
           ],
         ),
       ),
@@ -989,6 +1008,321 @@ class _HomeScreenState extends State<HomeScreen> {
     _showMessage('CSV preparado para compartir', success: true);
   }
 
+  static const _speechChannel = MethodChannel('com.lfbanegasr.mesa_ventas_mobile/speech');
+
+  // ── Voice & Two-Layer Agent Modal ─────────────────────
+  void _openVoiceAgentModal() {
+    final cmdCtrl = TextEditingController();
+    bool busy = false;
+    bool listening = false;
+    Map<String, dynamic>? lastResult;
+    String? errorText;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+          Future<void> submitCommand(String command) async {
+            final trimmed = command.trim();
+            if (trimmed.isEmpty) return;
+
+            setModalState(() {
+              busy = true;
+              errorText = null;
+              lastResult = null;
+            });
+
+            try {
+              final response = await apiClient.sendAgentCommand(trimmed);
+              setModalState(() {
+                busy = false;
+                lastResult = response;
+              });
+
+              if (response['state_updated'] == true) {
+                _refresh();
+              }
+            } catch (e) {
+              setModalState(() {
+                busy = false;
+                errorText = e.toString();
+              });
+            }
+          }
+
+          Future<void> startListening() async {
+            setModalState(() {
+              listening = true;
+              errorText = null;
+            });
+            try {
+              final text = await _speechChannel.invokeMethod<String>('startListening');
+              setModalState(() => listening = false);
+              if (text != null && text.trim().isNotEmpty) {
+                cmdCtrl.text = text.trim();
+                await submitCommand(text.trim());
+              }
+            } catch (err) {
+              setModalState(() {
+                listening = false;
+                errorText = 'No se pudo activar el micrófono: $err';
+              });
+            }
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: bottomInset + 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF172A3A),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.mic, color: Color(0xFFFFB887), size: 24),
+                          ),
+                          const SizedBox(width: 12),
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Asistente por Voz',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                'Procesamiento en 2 Capas (Santa Cruz)',
+                                style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Native Android voice dictation trigger
+                  InkWell(
+                    onTap: (busy || listening) ? null : startListening,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: listening ? const Color(0xFFDF7447) : const Color(0xFF172A3A),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            listening ? Icons.graphic_eq : Icons.mic,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              listening
+                                  ? 'Escuchando tu voz…'
+                                  : '🎙️ Toca para hablar (Dictado por Voz)',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: cmdCtrl,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      hintText: 'O escribe aquí tu orden (ej: Agendá a Juan Carlos del PB225 vía Yango...)',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: Color(0xFFDF7447), width: 2),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFFF9FAFB),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      ActionChip(
+                        avatar: const Text('📦'),
+                        label: const Text('Agendar PB225 Yango'),
+                        onPressed: () {
+                          cmdCtrl.text = 'Agendá consulta para Juan Carlos del PB225 para este viernes a las 4 de la tarde vía Yango en el 4to anillo radial 19';
+                          submitCommand(cmdCtrl.text);
+                        },
+                      ),
+                      ActionChip(
+                        avatar: const Text('🏷️'),
+                        label: const Text('Subir precio PB225'),
+                        onPressed: () {
+                          cmdCtrl.text = 'Subile 10 pesos al PB225 y anotá 4 unidades en mano';
+                          submitCommand(cmdCtrl.text);
+                        },
+                      ),
+                      ActionChip(
+                        avatar: const Text('📊'),
+                        label: const Text('Margen de hoy'),
+                        onPressed: () {
+                          cmdCtrl.text = '¿Cuánto margen cobrado y ventas llevamos hoy en Santa Cruz?';
+                          submitCommand(cmdCtrl.text);
+                        },
+                      ),
+                      ActionChip(
+                        avatar: const Text('💬'),
+                        label: const Text('Redactar respuesta'),
+                        onPressed: () {
+                          cmdCtrl.text = 'Redactale respuesta al cliente del PB225 que pide rebaja y pregunta por envío';
+                          submitCommand(cmdCtrl.text);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  ElevatedButton.icon(
+                    onPressed: (busy || listening) ? null : () => submitCommand(cmdCtrl.text),
+                    icon: busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send),
+                    label: Text(busy ? 'Procesando en dos capas…' : 'Ejecutar comando'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFDF7447),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF0E9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFF2C9B8)),
+                      ),
+                      child: Text(
+                        '⚠️ $errorText',
+                        style: const TextStyle(color: Color(0xFF8F351F), fontSize: 13),
+                      ),
+                    ),
+                  ],
+                  if (lastResult != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAF8),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFDBE3DB)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (lastResult!['interpretation'] != null) ...[
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEDF4F0),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '🧠 Capa 1: ${(lastResult!['interpretation']['ambito'] ?? 'general').toString().toUpperCase()}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2C7569),
+                                    ),
+                                  ),
+                                ),
+                                if (lastResult!['state_updated'] == true) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEEF0F5),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'BD Actualizada',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF65718A),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Intención: ${lastResult!['interpretation']['intencion'] ?? ''}',
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF55676E)),
+                            ),
+                            const Divider(height: 16),
+                          ],
+                          Text(
+                            lastResult!['reply'] ?? '',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF172A3A)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final titles = ['Inicio', 'Consultas', 'Productos', 'Asistente'];
@@ -1008,6 +1342,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.mic, color: Color(0xFFDF7447)),
+            onPressed: _openVoiceAgentModal,
+            tooltip: 'Asistente por voz (Agente)',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refresh,

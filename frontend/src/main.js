@@ -1,4 +1,4 @@
-import { api, loginApi, checkSession, logout, isTokenValid } from './api.js';
+import { api, loginApi, checkSession, logout, isTokenValid, sendAgentCommand } from './api.js';
 import './style.css';
 
 const $ = selector => document.querySelector(selector);
@@ -111,6 +111,7 @@ function initApp() {
   $('#chat-input').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#chat-form').requestSubmit(); } });
   $('#today').textContent = new Intl.DateTimeFormat('es-BO', { dateStyle: 'full', timeZone: 'America/La_Paz' }).format(new Date());
 
+  initVoiceAgent();
   refresh();
 }
 
@@ -406,6 +407,181 @@ function exportCsv() {
   const fileName = `ventas-${new Date().toISOString().slice(0, 10)}.csv`;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a'); link.href = url; link.download = fileName; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ── Voice Agent & Two-Layer Interaction ───────────────────
+let recognition = null;
+let isRecording = false;
+
+function initVoiceAgent() {
+  const triggerBtn = $('#voice-agent-trigger');
+  const floatingBtn = $('#floating-mic-btn');
+  const dialog = $('#voice-agent-dialog');
+  const recordBtn = $('#voice-record-btn');
+  const statusText = $('#voice-status-text');
+  const waveBars = $('#voice-wave-bars');
+  const input = $('#voice-command-input');
+  const form = $('#voice-command-form');
+  const sendBtn = $('#voice-send-btn');
+  const ttsToggle = $('#voice-tts-toggle');
+  const listeningTag = $('#voice-listening-indicator');
+  const resultCard = $('#voice-result-card');
+  const layer1Badge = $('#voice-layer1-badge');
+  const stateBadge = $('#voice-state-badge');
+  const layer1Intent = $('#voice-layer1-intent');
+  const layer2Reply = $('#voice-layer2-reply');
+
+  function openDialog() {
+    dialog.showModal();
+    input.focus();
+  }
+
+  if (triggerBtn) triggerBtn.addEventListener('click', openDialog);
+  if (floatingBtn) floatingBtn.addEventListener('click', openDialog);
+
+  // Web Speech API
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.lang = 'es-BO';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => {
+      isRecording = true;
+      recordBtn.classList.add('recording');
+      waveBars.hidden = false;
+      listeningTag.hidden = false;
+      statusText.textContent = '🎙️ Escuchando en Santa Cruz... habla con libertad.';
+      statusText.classList.add('listening');
+    };
+
+    recognition.onresult = event => {
+      let interim = '';
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      const current = finalTranscript || interim;
+      if (current) {
+        input.value = current;
+        statusText.textContent = `"${current}"`;
+      }
+    };
+
+    recognition.onerror = event => {
+      console.warn('SpeechRecognition error:', event.error);
+      isRecording = false;
+      recordBtn.classList.remove('recording');
+      waveBars.hidden = true;
+      listeningTag.hidden = true;
+      statusText.classList.remove('listening');
+      statusText.textContent = event.error === 'not-allowed'
+        ? '⚠️ Permiso de micrófono denegado en el navegador.'
+        : `⚠️ Error de reconocimiento (${event.error}). Puedes escribir tu orden.`;
+    };
+
+    recognition.onend = () => {
+      isRecording = false;
+      recordBtn.classList.remove('recording');
+      waveBars.hidden = true;
+      listeningTag.hidden = true;
+      statusText.classList.remove('listening');
+      if (input.value.trim()) {
+        statusText.textContent = 'Audio capturado. Presiona Ejecutar o edita el texto si deseas.';
+      } else {
+        statusText.textContent = 'Presiona el micrófono para hablar o escribe abajo';
+      }
+    };
+
+    recordBtn.addEventListener('click', () => {
+      if (isRecording) {
+        recognition.stop();
+      } else {
+        input.value = '';
+        try {
+          recognition.start();
+        } catch {
+          recognition.stop();
+          setTimeout(() => recognition.start(), 200);
+        }
+      }
+    });
+  } else {
+    statusText.textContent = 'Nota: Tu navegador no soporta Web Speech API. Puedes escribir tu orden aquí.';
+    recordBtn.title = 'Micrófono no soportado en este navegador';
+    recordBtn.style.opacity = '0.6';
+  }
+
+  // Chips click handlers
+  document.querySelectorAll('.suggestion-chips .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      input.value = chip.dataset.cmd;
+      submitVoiceCommand(chip.dataset.cmd);
+    });
+  });
+
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const cmd = input.value.trim();
+    if (!cmd) return;
+    submitVoiceCommand(cmd);
+  });
+
+  async function submitVoiceCommand(commandText) {
+    if (isRecording && recognition) recognition.stop();
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Procesando…';
+    statusText.textContent = '🧠 Capa 1: Normalizando y traduciendo prompt con Gemini…';
+    resultCard.hidden = true;
+
+    try {
+      const response = await sendAgentCommand(commandText);
+
+      // Render Two-Layer Results
+      resultCard.hidden = false;
+      const interpretation = response.interpretation || {};
+      const ambito = (interpretation.ambito || 'general').toUpperCase();
+      layer1Badge.textContent = `🧠 Capa 1 [${ambito}]`;
+      layer1Intent.textContent = `Intención: ${interpretation.intencion || 'Acción detectada'} | Normalizado: "${interpretation.instruccion_normalizada || commandText}"`;
+
+      layer2Reply.textContent = response.reply || 'Acción ejecutada.';
+
+      if (response.state_updated) {
+        stateBadge.hidden = false;
+        notice('✅ Datos sincronizados con el backend', true);
+        await refresh();
+      } else {
+        stateBadge.hidden = true;
+      }
+
+      statusText.textContent = '✅ Procesado con éxito.';
+
+      // Text-to-Speech (TTS)
+      if (ttsToggle.checked && window.speechSynthesis && response.reply) {
+        window.speechSynthesis.cancel();
+        const cleanSpeakText = response.reply.replace(/[\u{1F600}-\u{1F6FF}|[\u{2600}-\u{26FF}]/gu, '').trim();
+        const utterance = new SpeechSynthesisUtterance(cleanSpeakText);
+        utterance.lang = 'es-BO';
+        utterance.rate = 1.05;
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (err) {
+      resultCard.hidden = false;
+      layer1Badge.textContent = '⚠️ Error';
+      layer1Intent.textContent = 'Fallo en la comunicación con el agente.';
+      layer2Reply.textContent = err.message || 'Error desconocido';
+      statusText.textContent = 'Ocurrió un error. Revisa el texto e intenta de nuevo.';
+    } finally {
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Ejecutar';
+    }
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────

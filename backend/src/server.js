@@ -8,6 +8,7 @@ import productsRouter from './routes/products.js';
 import leadsRouter from './routes/leads.js';
 import chatsRouter from './routes/chats.js';
 import aiRouter from './routes/ai.js';
+import agentRouter from './routes/agent.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -64,6 +65,7 @@ app.use('/api/products', authenticate, productsRouter);
 app.use('/api/leads', authenticate, leadsRouter);
 app.use('/api/chats', authenticate, chatsRouter);
 app.use('/api/ai', authenticate, aiRouter);
+app.use('/api/agent', authenticate, agentRouter);
 
 // Combined state endpoint
 app.get('/api/state', authenticate, async (req, res) => {

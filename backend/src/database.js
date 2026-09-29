@@ -49,6 +49,11 @@ export async function initDb() {
 
   // Ejecutar migraciones iniciales
   await pool.query(postgresSchema);
+  try {
+    await pool.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE');
+  } catch (_e) {
+    // Columna ya existe o base de datos en memoria inicializada
+  }
   console.log('[DB] Tablas y esquema de PostgreSQL inicializados correctamente.');
 }
 

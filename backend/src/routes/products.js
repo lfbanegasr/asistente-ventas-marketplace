@@ -76,18 +76,19 @@ async function saveProduct(req, res, id) {
     if (data.availability !== 'en_mano' && units !== 0) return res.status(400).json({ error: 'Las unidades en mano deben ser cero si no tienes el producto.' });
 
     const checked = data.availability_checked === true && data.availability !== 'por_confirmar';
+    const isActive = data.is_active !== undefined ? (data.is_active === true || data.is_active === 1 || data.is_active === 'true') : true;
     const key = id || crypto.randomUUID();
 
     let previous;
     if (id) {
-      previous = await queryFirst('SELECT availability,available_units,ready_date FROM products WHERE id=?', [id]);
+      previous = await queryFirst('SELECT availability,available_units,ready_date,is_active FROM products WHERE id=?', [id]);
       if (!previous) return res.status(404).json({ error: 'Producto no encontrado.' });
-      const result = await run('UPDATE products SET name=?, facts=?, cost=?, price=?, min_price=?, availability=?, available_units=?, ready_date=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-        [name, facts, cost, price, minPrice, data.availability, units, readyDate, id]);
+      const result = await run('UPDATE products SET name=?, facts=?, cost=?, price=?, min_price=?, availability=?, available_units=?, ready_date=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        [name, facts, cost, price, minPrice, data.availability, units, readyDate, isActive, id]);
       if (!result.changes) return res.status(404).json({ error: 'Producto no encontrado.' });
     } else {
-      await run('INSERT INTO products (id,name,facts,cost,price,min_price,availability,available_units,ready_date) VALUES (?,?,?,?,?,?,?,?,?)',
-        [key, name, facts, cost, price, minPrice, data.availability, units, readyDate]);
+      await run('INSERT INTO products (id,name,facts,cost,price,min_price,availability,available_units,ready_date,is_active) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        [key, name, facts, cost, price, minPrice, data.availability, units, readyDate, isActive]);
     }
 
     if (checked) {

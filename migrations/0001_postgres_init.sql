@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS products (
   availability VARCHAR(50) NOT NULL DEFAULT 'por_confirmar' CHECK (availability IN ('en_mano','proveedor_confirmado','por_confirmar')),
   available_units INTEGER NOT NULL DEFAULT 0 CHECK (available_units >= 0),
   ready_date VARCHAR(20) NOT NULL DEFAULT '',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

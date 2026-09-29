@@ -72,4 +72,8 @@ function logout() {
   window.location.hash = '#/login';
 }
 
-export { api, loginApi, checkSession, logout, isTokenValid, getToken, clearToken };
+async function sendAgentCommand(command) {
+  return api('/api/agent/command', 'POST', { command });
+}
+
+export { api, loginApi, checkSession, logout, isTokenValid, getToken, clearToken, sendAgentCommand };

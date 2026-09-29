@@ -44,7 +44,7 @@ router.post('/', async (req, res) => {
 
     let response;
     try {
-      const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+      const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
       response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },

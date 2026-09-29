@@ -112,9 +112,13 @@ class ApiClient {
     return _post('/api/chats/$chatId/turns', data, expectedStatus: 201);
   }
 
-  // ── AI ────────────────────────────────────────────────
+  // ── AI & Agent ────────────────────────────────────────
   Future<Map<String, dynamic>> aiDraft(Map<String, dynamic> data) async {
     return _post('/api/ai', data);
+  }
+
+  Future<Map<String, dynamic>> sendAgentCommand(String command) async {
+    return _post('/api/agent/command', {'command': command});
   }
 
   // ── HTTP helpers ──────────────────────────────────────
