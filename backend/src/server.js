@@ -24,9 +24,17 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Permitir llamadas sin origin (apps móviles, curl, etc.)
+    if (!origin) return callback(null, true);
+
+    const isLocal = origin.includes('localhost') || origin.includes('127.0.0.1');
+    const isVercel = origin.endsWith('.vercel.app');
+    const isExplicit = allowedOrigins.includes('*') || allowedOrigins.includes(origin);
+
+    if (isLocal || isVercel || isExplicit) {
       callback(null, true);
     } else {
+      console.warn(`[CORS] Origen bloqueado: ${origin}. Permitidos: ${allowedOrigins.join(', ')}`);
       callback(new Error('Origen no permitido por CORS.'));
     }
   },

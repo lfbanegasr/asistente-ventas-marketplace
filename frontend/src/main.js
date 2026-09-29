@@ -58,9 +58,9 @@ function initLogin() {
   newForm.addEventListener('submit', async event => {
     event.preventDefault();
     const btn = newForm.querySelector('#login-button');
-    const msg = newForm.querySelector('#login-error');
+    const msg = $('#login-error');
     if (btn.disabled) return;
-    msg.hidden = true;
+    if (msg) msg.hidden = true;
     btn.disabled = true;
     btn.textContent = 'Entrando…';
     try {
