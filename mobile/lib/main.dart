@@ -4,10 +4,9 @@ import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 
 // ── CONFIGURE YOUR BACKEND URL HERE ─────────────────────
-// Change this to your Railway backend URL in production
-const String apiBaseUrl = 'https://tu-backend.up.railway.app';
-// For local development, use: 'http://10.0.2.2:3001' (Android emulator)
-// or 'http://localhost:3001' (iOS simulator)
+// Backend en producción en Render
+const String apiBaseUrl = 'https://asistente-ventas-marketplace.onrender.com';
+// Para desarrollo local: 'http://10.0.2.2:3001' (emulador) o 'http://localhost:3001'
 // ─────────────────────────────────────────────────────────
 
 final apiClient = ApiClient(baseUrl: apiBaseUrl);
