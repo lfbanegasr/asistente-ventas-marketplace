@@ -37,8 +37,10 @@ test('Agent Tools: Todas las 7 herramientas est√°n declaradas con JSON Schema v√
 
   for (const tool of toolsDeclarations) {
     assert.ok(tool.description, `Tool ${tool.name} must have a description`);
-    assert.strictEqual(tool.parametersJsonSchema.type, 'object');
-    assert.ok(tool.parametersJsonSchema.properties);
+    const schema = tool.parameters || tool.parametersJsonSchema;
+    assert.ok(schema, `Tool ${tool.name} must have parameters`);
+    assert.strictEqual(schema.type.toLowerCase(), 'object');
+    assert.ok(schema.properties);
   }
 });
 

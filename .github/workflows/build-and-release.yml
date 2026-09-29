@@ -1,0 +1,51 @@
+name: Compilar y Publicar APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Obtener dependencias
+        run: |
+          cd mobile
+          flutter pub get
+
+      - name: Compilar APK Release
+        run: |
+          cd mobile
+          flutter build apk --release
+
+      - name: Publicar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Mesa de Ventas ${{ github.ref_name }}
+          files: mobile/build/app/outputs/flutter-apk/app-release.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
