@@ -137,9 +137,9 @@ router.post('/:id/turns', async (req, res) => {
     if (!uuid(id)) return res.status(400).json({ error: 'ID inválido.' });
     const data = req.body;
 
-    if (!uuid(data.request_id)) return res.status(400).json({ error: 'Identificador de mensaje inválido.' });
+    const requestId = uuid(data.request_id) ? data.request_id : crypto.randomUUID();
 
-    const existing = await queryFirst('SELECT thread_id,request_id,user_text,assistant_text,source,created_at::text FROM chat_turns WHERE request_id=?', [data.request_id]);
+    const existing = await queryFirst('SELECT thread_id,request_id,user_text,assistant_text,source,created_at::text FROM chat_turns WHERE request_id=?', [requestId]);
     if (existing) {
       return existing.thread_id === id
         ? res.json({ turn: existing, duplicate: true })
@@ -161,10 +161,10 @@ router.post('/:id/turns', async (req, res) => {
 
     try {
       await run('INSERT INTO chat_turns(id,thread_id,request_id,user_text,assistant_text,source) VALUES (?,?,?,?,?,?)',
-        [crypto.randomUUID(), id, data.request_id, message, answer.text, answer.source]);
+        [crypto.randomUUID(), id, requestId, message, answer.text, answer.source]);
     } catch (e) {
       if (e.message?.includes('duplicate key') || e.message?.includes('UNIQUE')) {
-        const saved = await queryFirst('SELECT thread_id,request_id,user_text,assistant_text,source,created_at::text FROM chat_turns WHERE request_id=?', [data.request_id]);
+        const saved = await queryFirst('SELECT thread_id,request_id,user_text,assistant_text,source,created_at::text FROM chat_turns WHERE request_id=?', [requestId]);
         if (saved) {
           return saved.thread_id === id
             ? res.json({ turn: saved, duplicate: true })
@@ -182,7 +182,7 @@ router.post('/:id/turns', async (req, res) => {
       await run('UPDATE chat_threads SET updated_at=CURRENT_TIMESTAMP WHERE id=?', [id]);
     }
 
-    const turn = await queryFirst('SELECT thread_id,request_id,user_text,assistant_text,source,created_at::text FROM chat_turns WHERE request_id=?', [data.request_id]);
+    const turn = await queryFirst('SELECT thread_id,request_id,user_text,assistant_text,source,created_at::text FROM chat_turns WHERE request_id=?', [requestId]);
     res.status(201).json({ turn, warning: answer.warning });
   } catch (err) {
     console.error('Error posting chat turn:', err);

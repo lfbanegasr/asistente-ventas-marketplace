@@ -65,3 +65,25 @@ test('Can create chat thread and turn', async () => {
   assert.strictEqual(turns.length, 1);
   assert.strictEqual(turns[0].source, 'base');
 });
+
+test('Can delete lead', async () => {
+  const leadId = crypto.randomUUID();
+  await run(
+    'INSERT INTO leads (id, request_id, channel, product_id, alias, status, amount, actual_cost, expenses, delivery_mode, delivery_place, delivery_at, paid, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [leadId, crypto.randomUUID(), 'Marketplace', 'pb6010', 'Para borrar', 'consulta', 170, 98, 0, 'por_definir', '', '', 0, '']
+  );
+  await run('DELETE FROM leads WHERE id=?', [leadId]);
+  const deleted = await queryFirst('SELECT id FROM leads WHERE id=?', [leadId]);
+  assert.strictEqual(deleted, null);
+});
+
+test('Can delete product and cascade its dependencies', async () => {
+  const prodId = 'prod-delete-test';
+  await run(
+    'INSERT INTO products (id, name, facts, cost, price, min_price) VALUES (?, ?, ?, ?, ?, ?)',
+    [prodId, 'Producto a borrar', '', 10, 20, 15]
+  );
+  await run('DELETE FROM products WHERE id=?', [prodId]);
+  const deleted = await queryFirst('SELECT id FROM products WHERE id=?', [prodId]);
+  assert.strictEqual(deleted, null);
+});

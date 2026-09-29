@@ -43,6 +43,24 @@ router.post('/', async (req, res) => saveProduct(req, res, null));
 // PATCH /api/products/:id
 router.patch('/:id', async (req, res) => saveProduct(req, res, req.params.id));
 
+// DELETE /api/products/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const existing = await queryFirst('SELECT id FROM products WHERE id=?', [id]);
+    if (!existing) return res.status(404).json({ error: 'Producto no encontrado.' });
+
+    await run('DELETE FROM availability_checks WHERE product_id=?', [id]);
+    await run('DELETE FROM chat_threads WHERE product_id=?', [id]);
+    await run('DELETE FROM leads WHERE product_id=?', [id]);
+    await run('DELETE FROM products WHERE id=?', [id]);
+    res.json({ ok: true, id });
+  } catch (err) {
+    console.error('Error deleting product:', err);
+    res.status(500).json({ error: 'Error al eliminar producto.' });
+  }
+});
+
 async function saveProduct(req, res, id) {
   try {
     const data = req.body;

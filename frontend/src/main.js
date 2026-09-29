@@ -90,10 +90,20 @@ function initApp() {
   $('#lead-form').addEventListener('submit', saveLead);
   $('#product-form').addEventListener('submit', saveProduct);
   $('#lead-form [name="product_id"]').addEventListener('change', event => { const p = state.products.find(p => p.id === event.target.value); if (p) { const form = $('#lead-form'); form.elements.amount.value = p.price; form.elements.actual_cost.value = p.cost; } });
+  $('#product-form [name="availability"]').addEventListener('change', event => {
+    const units = $('#product-form [name="available_units"]');
+    if (event.target.value === 'en_mano') {
+      if (Number(units.value) <= 0) units.value = 1;
+    } else {
+      units.value = 0;
+    }
+  });
   $('#search').addEventListener('input', renderLeads);
   $('#status-filter').addEventListener('change', renderLeads);
   $('#refresh').addEventListener('click', refresh);
   $('#export').addEventListener('click', exportCsv);
+  $('#delete-lead').addEventListener('click', deleteLeadHandler);
+  $('#delete-product').addEventListener('click', deleteProductHandler);
   $('#logout').addEventListener('click', () => { logout(); appInitialized = false; });
   $('#new-chat').addEventListener('click', newChat);
   $('#chat-form').addEventListener('submit', sendChat);
@@ -184,36 +194,97 @@ function renderPickers() {
   pickers.forEach(picker => { const selected = picker.value; picker.replaceChildren(); state.products.forEach(p => { const option = element('option', p.name); option.value = p.id; picker.append(option); }); if (state.products.some(p => p.id === selected)) picker.value = selected; });
 }
 
+let currentLeadId = null;
+let currentProductId = null;
+
 function openLead(lead) {
   const form = $('#lead-form'); form.reset(); state.pendingLeadId = lead ? null : crypto.randomUUID();
+  currentLeadId = lead?.id || null;
   $('#lead-form-error').hidden = true;
   $('#lead-dialog-title').textContent = lead ? 'Actualizar consulta' : 'Nueva consulta';
   form.elements.id.value = lead?.id || '';
+  
+  const deleteBtn = $('#delete-lead');
+  if (deleteBtn) deleteBtn.hidden = !lead;
+
+  const saveBtn = $('#save-lead');
+  if (!lead && (!state.products || state.products.length === 0)) {
+    $('#lead-form-error').textContent = '⚠️ Primero debes crear al menos un producto en la pestaña "Productos" antes de registrar consultas.';
+    $('#lead-form-error').hidden = false;
+    if (saveBtn) saveBtn.disabled = true;
+    $('#lead-dialog').showModal();
+    return;
+  }
+  if (saveBtn) saveBtn.disabled = false;
+
   if (lead) {
-    for (const key of ['alias','channel','product_id','status','amount','actual_cost','expenses','delivery_mode','delivery_place','delivery_at','notes']) form.elements[key].value = lead[key] ?? '';
+    for (const key of ['alias','channel','product_id','status','amount','actual_cost','expenses','delivery_mode','delivery_place','delivery_at','notes']) {
+      if (form.elements[key]) form.elements[key].value = lead[key] ?? '';
+    }
     form.elements.paid.checked = !!lead.paid;
-    form.elements.channel.disabled = true; form.elements.product_id.disabled = true;
   } else {
-    form.elements.channel.disabled = false; form.elements.product_id.disabled = false;
-    form.elements.status.value = 'consulta'; form.elements.delivery_mode.value = 'por_definir'; form.elements.expenses.value = '0';
-    const product = state.products.find(p => p.id === form.elements.product_id.value);
-    form.elements.amount.value = product?.price || 0; form.elements.actual_cost.value = product?.cost || 0;
+    form.elements.status.value = 'consulta';
+    form.elements.delivery_mode.value = 'por_definir';
+    form.elements.expenses.value = '0';
+    if (state.products.length) {
+      form.elements.product_id.value = state.products[0].id;
+      form.elements.amount.value = state.products[0].price || 0;
+      form.elements.actual_cost.value = state.products[0].cost || 0;
+    }
   }
   $('#lead-dialog').showModal();
 }
 
+async function deleteLeadHandler() {
+  if (!currentLeadId || !confirm('¿Eliminar esta consulta de seguimiento?')) return;
+  try {
+    await api(`/api/leads/${encodeURIComponent(currentLeadId)}`, 'DELETE');
+    $('#lead-dialog').close();
+    await refresh();
+    notice('Consulta eliminada.', true);
+  } catch (e) {
+    const box = $('#lead-form-error'); box.textContent = `No se pudo eliminar: ${e.message}`; box.hidden = false;
+  }
+}
+
 function openProduct(product) {
-  const form = $('#product-form'); form.reset(); $('#product-dialog-title').textContent = product ? 'Editar producto' : 'Nuevo producto';
+  const form = $('#product-form'); form.reset();
+  currentProductId = product?.id || null;
+  $('#product-dialog-title').textContent = product ? 'Editar producto' : 'Nuevo producto';
   $('#product-form-error').hidden = true;
   form.elements.id.value = product?.id || '';
-  if (product) for (const key of ['name','facts','cost','price','min_price','availability','available_units','ready_date']) form.elements[key].value = product[key] ?? '';
-  else { form.elements.availability.value = 'por_confirmar'; form.elements.available_units.value = 0; }
+  
+  const deleteBtn = $('#delete-product');
+  if (deleteBtn) deleteBtn.hidden = !product;
+
+  if (product) {
+    for (const key of ['name','facts','cost','price','min_price','availability','available_units','ready_date']) {
+      if (form.elements[key]) form.elements[key].value = product[key] ?? '';
+    }
+  } else {
+    form.elements.availability.value = 'por_confirmar';
+    form.elements.available_units.value = 0;
+  }
   $('#product-dialog').showModal();
+}
+
+async function deleteProductHandler() {
+  if (!currentProductId || !confirm('¿Eliminar este producto? Se eliminarán también las consultas y chats vinculados a él.')) return;
+  try {
+    await api(`/api/products/${encodeURIComponent(currentProductId)}`, 'DELETE');
+    $('#product-dialog').close();
+    await refresh();
+    notice('Producto eliminado.', true);
+  } catch (e) {
+    const box = $('#product-form-error'); box.textContent = `No se pudo eliminar: ${e.message}`; box.hidden = false;
+  }
 }
 
 async function saveLead(event) {
   event.preventDefault(); const form = event.currentTarget, button = $('#save-lead'); if (button.disabled) return;
   const data = Object.fromEntries(new FormData(form)); data.paid = form.elements.paid.checked;
+  if (!data.channel && form.elements.channel) data.channel = form.elements.channel.value;
+  if (!data.product_id && form.elements.product_id) data.product_id = form.elements.product_id.value;
   $('#lead-form-error').hidden = true;
   button.disabled = true; button.textContent = 'Guardando…';
   try {

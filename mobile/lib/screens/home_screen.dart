@@ -83,6 +83,580 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ── Product CRUD Modal ────────────────────────────────
+  void _openProductForm([Map<String, dynamic>? product]) {
+    final isEdit = product != null;
+    final nameCtrl = TextEditingController(text: product?['name'] ?? '');
+    final factsCtrl = TextEditingController(text: product?['facts'] ?? '');
+    final costCtrl = TextEditingController(text: isEdit ? '${product['cost']}' : '');
+    final priceCtrl = TextEditingController(text: isEdit ? '${product['price']}' : '');
+    final minPriceCtrl = TextEditingController(text: isEdit ? '${product['min_price']}' : '');
+    final unitsCtrl = TextEditingController(text: isEdit ? '${product['available_units']}' : '0');
+    final readyDateCtrl = TextEditingController(text: product?['ready_date'] ?? '');
+    String availability = product?['availability'] ?? 'por_confirmar';
+    bool checked = false;
+    bool saving = false;
+    String? formError;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      isEdit ? 'Editar producto' : 'Nuevo producto',
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(sheetContext),
+                    ),
+                  ],
+                ),
+                if (formError != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: const Color(0xFFFDE8E8), borderRadius: BorderRadius.circular(8)),
+                    child: Text(formError!, style: const TextStyle(color: Color(0xFFC81E1E), fontSize: 13)),
+                  ),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Nombre *', hintText: 'Ej.: Yesido PB6010'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: factsCtrl,
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: 'Datos comprobados', hintText: 'Solo lo que puedas afirmar al cliente'),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: costCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Costo (Bs) *'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: priceCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Precio publicado (Bs) *'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: minPriceCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Precio mín. interno *'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: unitsCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Unidades en mano *'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: availability,
+                  decoration: const InputDecoration(labelText: 'Disponibilidad'),
+                  items: const [
+                    DropdownMenuItem(value: 'por_confirmar', child: Text('Por confirmar')),
+                    DropdownMenuItem(value: 'proveedor_confirmado', child: Text('Proveedor confirmó')),
+                    DropdownMenuItem(value: 'en_mano', child: Text('En mano')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setModalState(() {
+                        availability = val;
+                        if (val == 'en_mano') {
+                          if ((int.tryParse(unitsCtrl.text) ?? 0) <= 0) unitsCtrl.text = '1';
+                        } else {
+                          unitsCtrl.text = '0';
+                        }
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: readyDateCtrl,
+                  decoration: const InputDecoration(labelText: 'Fecha posible entrega (AAAA-MM-DD)', hintText: '2026-09-30'),
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: checked,
+                  title: const Text('Verifiqué esta disponibilidad ahora', style: TextStyle(fontSize: 13)),
+                  onChanged: (v) => setModalState(() => checked = v ?? false),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    if (isEdit)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Color(0xFFC81E1E)),
+                        tooltip: 'Eliminar producto',
+                        onPressed: saving ? null : () async {
+                          final confirm = await showDialog<bool>(
+                            context: ctx,
+                            builder: (dCtx) => AlertDialog(
+                              title: const Text('¿Eliminar producto?'),
+                              content: const Text('Se eliminarán también las consultas y chats vinculados a este producto.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancelar')),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dCtx, true),
+                                  child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm == true) {
+                            setModalState(() => saving = true);
+                            try {
+                              await apiClient.deleteProduct(product['id']);
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                                _refresh();
+                                _showMessage('Producto eliminado.', success: true);
+                              }
+                            } catch (e) {
+                              setModalState(() {
+                                formError = e.toString();
+                                saving = false;
+                              });
+                            }
+                          }
+                        },
+                      ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: saving ? null : () => Navigator.pop(sheetContext),
+                      child: const Text('Cancelar'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF172A3A), foregroundColor: Colors.white),
+                      onPressed: saving ? null : () async {
+                        final name = nameCtrl.text.trim();
+                        final cost = int.tryParse(costCtrl.text.trim());
+                        final price = int.tryParse(priceCtrl.text.trim());
+                        final minPrice = int.tryParse(minPriceCtrl.text.trim());
+                        final units = int.tryParse(unitsCtrl.text.trim());
+
+                        if (name.isEmpty) {
+                          setModalState(() => formError = 'El nombre es obligatorio.');
+                          return;
+                        }
+                        if (cost == null || cost < 0 || price == null || price < 0 || minPrice == null || minPrice < 0 || units == null || units < 0) {
+                          setModalState(() => formError = 'Ingresa valores numéricos válidos.');
+                          return;
+                        }
+                        if (minPrice > price) {
+                          setModalState(() => formError = 'El precio mínimo no puede superar el precio publicado.');
+                          return;
+                        }
+                        if (availability == 'en_mano' && units < 1) {
+                          setModalState(() => formError = 'Si está en mano, indica al menos 1 unidad.');
+                          return;
+                        }
+                        if (availability != 'en_mano' && units != 0) {
+                          setModalState(() => formError = 'Unidades en mano debe ser 0 si no lo tienes físicamente.');
+                          return;
+                        }
+
+                        setModalState(() {
+                          saving = true;
+                          formError = null;
+                        });
+
+                        try {
+                          final data = {
+                            'name': name,
+                            'facts': factsCtrl.text.trim(),
+                            'cost': cost,
+                            'price': price,
+                            'min_price': minPrice,
+                            'availability': availability,
+                            'available_units': units,
+                            'ready_date': readyDateCtrl.text.trim(),
+                            'availability_checked': checked,
+                          };
+                          await apiClient.saveProduct(data, id: isEdit ? product['id'] : null);
+                          if (sheetContext.mounted) {
+                            Navigator.pop(sheetContext);
+                            _refresh();
+                            _showMessage(isEdit ? 'Producto actualizado.' : 'Producto creado.', success: true);
+                          }
+                        } catch (e) {
+                          setModalState(() {
+                            formError = e.toString();
+                            saving = false;
+                          });
+                        }
+                      },
+                      child: Text(saving ? 'Guardando…' : 'Guardar'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Lead CRUD Modal ───────────────────────────────────
+  void _openLeadForm([Map<String, dynamic>? lead]) {
+    if (lead == null && _products.isEmpty) {
+      _showMessage('Primero crea un producto en la pestaña "Productos" antes de registrar consultas.');
+      return;
+    }
+    final isEdit = lead != null;
+    final aliasCtrl = TextEditingController(text: lead?['alias'] ?? '');
+    String channel = lead?['channel'] ?? 'Marketplace';
+    String productId = lead?['product_id'] ?? _products[0]['id'];
+    String status = lead?['status'] ?? 'consulta';
+    
+    final selectedProduct = _products.firstWhere((p) => p['id'] == productId, orElse: () => _products.first);
+    final amountCtrl = TextEditingController(text: isEdit ? '${lead['amount']}' : '${selectedProduct['price']}');
+    final costCtrl = TextEditingController(text: isEdit ? '${lead['actual_cost']}' : '${selectedProduct['cost']}');
+    final expensesCtrl = TextEditingController(text: isEdit ? '${lead['expenses']}' : '0');
+    String deliveryMode = lead?['delivery_mode'] ?? 'por_definir';
+    final placeCtrl = TextEditingController(text: lead?['delivery_place'] ?? '');
+    final dateCtrl = TextEditingController(text: lead?['delivery_at'] ?? '');
+    bool paid = isEdit ? (lead['paid'] == 1 || lead['paid'] == true) : false;
+    final notesCtrl = TextEditingController(text: lead?['notes'] ?? '');
+    bool saving = false;
+    String? formError;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      isEdit ? 'Actualizar consulta' : 'Nueva consulta',
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(sheetContext),
+                    ),
+                  ],
+                ),
+                if (formError != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: const Color(0xFFFDE8E8), borderRadius: BorderRadius.circular(8)),
+                    child: Text(formError!, style: const TextStyle(color: Color(0xFFC81E1E), fontSize: 13)),
+                  ),
+                TextField(
+                  controller: aliasCtrl,
+                  decoration: const InputDecoration(labelText: 'Nombre o alias *', hintText: 'Ej.: Cliente PB6010'),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: channel,
+                        decoration: const InputDecoration(labelText: 'Canal'),
+                        items: const [
+                          DropdownMenuItem(value: 'Marketplace', child: Text('Marketplace')),
+                          DropdownMenuItem(value: 'WhatsApp', child: Text('WhatsApp')),
+                          DropdownMenuItem(value: 'Otro', child: Text('Otro')),
+                        ],
+                        onChanged: (v) { if (v != null) setModalState(() => channel = v); },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _products.any((p) => p['id'] == productId) ? productId : _products[0]['id'],
+                        decoration: const InputDecoration(labelText: 'Producto'),
+                        isExpanded: true,
+                        items: _products.map((p) => DropdownMenuItem(
+                          value: p['id'] as String,
+                          child: Text(p['name'] as String, overflow: TextOverflow.ellipsis),
+                        )).toList(),
+                        onChanged: (v) {
+                          if (v != null) {
+                            setModalState(() {
+                              productId = v;
+                              if (!isEdit) {
+                                final prod = _products.firstWhere((p) => p['id'] == v);
+                                amountCtrl.text = '${prod['price']}';
+                                costCtrl.text = '${prod['cost']}';
+                              }
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: status,
+                  decoration: const InputDecoration(labelText: 'Estado'),
+                  items: const [
+                    DropdownMenuItem(value: 'consulta', child: Text('Consulta')),
+                    DropdownMenuItem(value: 'interesado', child: Text('Interesado')),
+                    DropdownMenuItem(value: 'confirmado', child: Text('Confirmado')),
+                    DropdownMenuItem(value: 'comprado', child: Text('Comprado')),
+                    DropdownMenuItem(value: 'agendado', child: Text('Agendado')),
+                    DropdownMenuItem(value: 'entregado', child: Text('Entregado')),
+                    DropdownMenuItem(value: 'cancelado', child: Text('Cancelado')),
+                  ],
+                  onChanged: (v) { if (v != null) setModalState(() => status = v); },
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: amountCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Precio acordado (Bs) *'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: costCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Costo real (Bs) *'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: expensesCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Otros gastos *'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: deliveryMode,
+                        decoration: const InputDecoration(labelText: 'Modalidad'),
+                        items: const [
+                          DropdownMenuItem(value: 'por_definir', child: Text('Por definir')),
+                          DropdownMenuItem(value: 'persona', child: Text('En persona')),
+                          DropdownMenuItem(value: 'yango', child: Text('Yango')),
+                        ],
+                        onChanged: (v) { if (v != null) setModalState(() => deliveryMode = v); },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: placeCtrl,
+                        decoration: const InputDecoration(labelText: 'Lugar / barrio', hintText: 'UAGRM, Cine Center...'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: dateCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Fecha y hora (AAAA-MM-DDTHH:MM)',
+                    hintText: '2026-09-30T15:30',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: paid,
+                  title: const Text('Pago del producto verificado', style: TextStyle(fontSize: 13)),
+                  onChanged: (v) => setModalState(() => paid = v ?? false),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: notesCtrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(labelText: 'Nota breve', hintText: 'Qué falta confirmar'),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    if (isEdit)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Color(0xFFC81E1E)),
+                        tooltip: 'Eliminar consulta',
+                        onPressed: saving ? null : () async {
+                          final confirm = await showDialog<bool>(
+                            context: ctx,
+                            builder: (dCtx) => AlertDialog(
+                              title: const Text('¿Eliminar consulta?'),
+                              content: const Text('Esta consulta se eliminará definitivamente.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancelar')),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dCtx, true),
+                                  child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm == true) {
+                            setModalState(() => saving = true);
+                            try {
+                              await apiClient.deleteLead(lead['id']);
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                                _refresh();
+                                _showMessage('Consulta eliminada.', success: true);
+                              }
+                            } catch (e) {
+                              setModalState(() {
+                                formError = e.toString();
+                                saving = false;
+                              });
+                            }
+                          }
+                        },
+                      ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: saving ? null : () => Navigator.pop(sheetContext),
+                      child: const Text('Cancelar'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF172A3A), foregroundColor: Colors.white),
+                      onPressed: saving ? null : () async {
+                        final alias = aliasCtrl.text.trim();
+                        final amount = int.tryParse(amountCtrl.text.trim());
+                        final cost = int.tryParse(costCtrl.text.trim());
+                        final expenses = int.tryParse(expensesCtrl.text.trim()) ?? 0;
+                        final place = placeCtrl.text.trim();
+                        final at = dateCtrl.text.trim();
+
+                        if (alias.isEmpty) {
+                          setModalState(() => formError = 'Escribe un nombre o alias.');
+                          return;
+                        }
+                        if (amount == null || amount < 0 || cost == null || cost < 0 || expenses < 0) {
+                          setModalState(() => formError = 'Revisa los montos ingresados.');
+                          return;
+                        }
+                        if (['agendado', 'entregado'].contains(status)) {
+                          if (deliveryMode == 'por_definir' || at.isEmpty || place.isEmpty) {
+                            setModalState(() => formError = 'Para agendar o entregar, indica modalidad, lugar y fecha.');
+                            return;
+                          }
+                        }
+                        if (status == 'entregado' && !paid) {
+                          setModalState(() => formError = 'Marca el pago como verificado antes de finalizar entrega.');
+                          return;
+                        }
+
+                        setModalState(() {
+                          saving = true;
+                          formError = null;
+                        });
+
+                        try {
+                          final data = {
+                            'alias': alias,
+                            'channel': channel,
+                            'product_id': productId,
+                            'status': status,
+                            'amount': amount,
+                            'actual_cost': cost,
+                            'expenses': expenses,
+                            'delivery_mode': deliveryMode,
+                            'delivery_place': place,
+                            'delivery_at': at,
+                            'paid': paid,
+                            'notes': notesCtrl.text.trim(),
+                          };
+                          if (isEdit) {
+                            await apiClient.updateLead(lead['id'], data);
+                          } else {
+                            await apiClient.createLead(data);
+                          }
+                          if (sheetContext.mounted) {
+                            Navigator.pop(sheetContext);
+                            _refresh();
+                            _showMessage(isEdit ? 'Consulta actualizada.' : 'Consulta registrada.', success: true);
+                          }
+                        } catch (e) {
+                          setModalState(() {
+                            formError = e.toString();
+                            saving = false;
+                          });
+                        }
+                      },
+                      child: Text(saving ? 'Guardando…' : 'Guardar'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── Dashboard ─────────────────────────────────────────
   Widget _buildDashboard() {
     final open = _leads.where((l) => !['entregado', 'cancelado'].contains(l['status'])).toList();
@@ -108,11 +682,22 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('TU DÍA, CLARO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2, color: const Color(0xFFD46E3D))),
+                const Text('TU DÍA, CLARO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2, color: Color(0xFFD46E3D))),
                 const SizedBox(height: 8),
                 const Text('Responde, confirma\ny entrega.', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -1.2)),
                 const SizedBox(height: 8),
-                Text('Registra solo las consultas que necesitan seguimiento.', style: TextStyle(color: const Color(0xFFC5D1D4), fontSize: 14)),
+                const Text('Registra solo las consultas que necesitan seguimiento.', style: TextStyle(color: Color(0xFFC5D1D4), fontSize: 14)),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD46E3D),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => _openLeadForm(),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('+ Nueva consulta', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
               ],
             ),
           ),
@@ -140,9 +725,13 @@ class _HomeScreenState extends State<HomeScreen> {
           if (scheduled.isEmpty)
             _emptyCard('Aún no hay entregas agendadas.')
           else
-            ...scheduled.take(5).map((l) => _infoRow(
-              l['alias'] as String,
-              '${l['product_name']} · ${_localDate(l['delivery_at'] as String?)} · ${(l['delivery_place'] as String?) ?? 'lugar pendiente'}',
+            ...scheduled.take(5).map((l) => InkWell(
+              onTap: () => _openLeadForm(l),
+              borderRadius: BorderRadius.circular(12),
+              child: _infoRow(
+                l['alias'] as String,
+                '${l['product_name']} · ${_localDate(l['delivery_at'] as String?)} · ${(l['delivery_place'] as String?) ?? 'lugar pendiente'}',
+              ),
             )),
         ],
       ),
@@ -192,12 +781,20 @@ class _HomeScreenState extends State<HomeScreen> {
         border: Border.all(color: const Color(0xFFE7EAE7)),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-          const SizedBox(height: 4),
-          Text(subtitle, style: const TextStyle(color: Color(0xFF6D7B7F), fontSize: 12)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(height: 4),
+                Text(subtitle, style: const TextStyle(color: Color(0xFF6D7B7F), fontSize: 12)),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
         ],
       ),
     );
@@ -241,7 +838,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Expanded(
             child: filtered.isEmpty
-                ? Center(child: Text('No hay consultas con ese filtro.', style: TextStyle(color: Colors.grey)))
+                ? const Center(child: Text('No hay consultas con ese filtro.', style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: filtered.length,
@@ -250,32 +847,42 @@ class _HomeScreenState extends State<HomeScreen> {
                       final status = l['status'] as String;
                       return Card(
                         margin: const EdgeInsets.only(bottom: 10),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Text(l['alias'] as String, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                                    Text('${l['product_name']} · ${l['channel']}', style: const TextStyle(fontSize: 12, color: Color(0xFF68787B))),
-                                  ])),
-                                  _badge(labels[status] ?? status, status),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Wrap(
-                                spacing: 12,
-                                runSpacing: 4,
-                                children: [
-                                  Text('Venta ${_money(l['amount'])}', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
-                                  Text('Margen ${_money((l['amount'] as int) - (l['actual_cost'] as int) - (l['expenses'] as int))}', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
-                                  Text(l['paid'] == 1 ? 'Pago ✓' : 'Pago pendiente', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
-                                ],
-                              ),
-                            ],
+                        child: InkWell(
+                          onTap: () => _openLeadForm(l),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      Text(l['alias'] as String, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                                      Text('${l['product_name']} · ${l['channel']}', style: const TextStyle(fontSize: 12, color: Color(0xFF68787B))),
+                                    ])),
+                                    Row(
+                                      children: [
+                                        _badge(labels[status] ?? status, status),
+                                        const SizedBox(width: 4),
+                                        const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 4,
+                                  children: [
+                                    Text('Venta ${_money(l['amount'])}', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
+                                    Text('Margen ${_money((l['amount'] as int) - (l['actual_cost'] as int) - (l['expenses'] as int))}', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
+                                    Text(l['paid'] == 1 ? 'Pago ✓' : 'Pago pendiente', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );
@@ -308,50 +915,62 @@ class _HomeScreenState extends State<HomeScreen> {
     final availabilityLabels = {'por_confirmar': 'Por confirmar', 'proveedor_confirmado': 'Proveedor confirmó', 'en_mano': 'En mano'};
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _products.length,
-        itemBuilder: (ctx, i) {
-          final p = _products[i];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            child: Padding(
+      child: _products.isEmpty
+          ? const Center(child: Text('No hay productos creados. Toca "+" para agregar uno.', style: TextStyle(color: Colors.grey)))
+          : ListView.builder(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(p['name'] as String, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 4),
-                        _badge(availabilityLabels[p['availability']] ?? '', p['availability'] == 'por_confirmar' ? 'consulta' : 'confirmado'),
-                      ])),
-                      Text(_money(p['price']), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
-                    ],
+              itemCount: _products.length,
+              itemBuilder: (ctx, i) {
+                final p = _products[i];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: InkWell(
+                    onTap: () => _openProductForm(p),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(p['name'] as String, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                                const SizedBox(height: 4),
+                                _badge(availabilityLabels[p['availability']] ?? '', p['availability'] == 'por_confirmar' ? 'consulta' : 'confirmado'),
+                              ])),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(_money(p['price']), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
+                                  const Icon(Icons.edit_outlined, size: 16, color: Colors.grey),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            (p['facts'] as String?)?.isNotEmpty == true ? p['facts'] as String : 'Sin datos de producto',
+                            style: const TextStyle(fontSize: 14, color: Color(0xFF53666C)),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 4,
+                            children: [
+                              Text('Costo ${_money(p['cost'])}', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
+                              Text('Mín. ${_money(p['min_price'])}', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
+                              Text('En mano: ${p['available_units']}', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    (p['facts'] as String?)?.isNotEmpty == true ? p['facts'] as String : 'Sin datos de producto',
-                    style: const TextStyle(fontSize: 14, color: Color(0xFF53666C)),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 4,
-                    children: [
-                      Text('Costo ${_money(p['cost'])}', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
-                      Text('Mín. ${_money(p['min_price'])}', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
-                      Text('En mano: ${p['available_units']}', style: const TextStyle(fontSize: 13, color: Color(0xFF617177))),
-                    ],
-                  ),
-                ],
-              ),
+                );
+              },
             ),
-          );
-        },
-      ),
     );
   }
 
@@ -432,6 +1051,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     ChatScreen(products: _products),
                   ],
                 ),
+      floatingActionButton: _currentIndex == 3
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () {
+                if (_currentIndex == 2) {
+                  _openProductForm();
+                } else {
+                  _openLeadForm();
+                }
+              },
+              icon: const Icon(Icons.add),
+              label: Text(_currentIndex == 2 ? 'Nuevo producto' : 'Nueva consulta'),
+              backgroundColor: const Color(0xFF172A3A),
+              foregroundColor: Colors.white,
+            ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (i) => setState(() => _currentIndex = i),

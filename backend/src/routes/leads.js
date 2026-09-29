@@ -65,10 +65,9 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Escribe un alias, canal y producto válidos.' });
     }
 
-    const requestId = str(data.request_id, 80);
-    if (!/^[a-f0-9-]{36}$/.test(requestId)) {
-      return res.status(400).json({ error: 'Falta el identificador de la consulta.' });
-    }
+    const requestId = (data.request_id && /^[a-f0-9-]{36}$/i.test(data.request_id))
+      ? data.request_id
+      : crypto.randomUUID();
 
     const details = leadDetails(data, product.price, product.cost);
     if (details.error) return res.status(400).json({ error: details.error });
@@ -105,6 +104,21 @@ router.patch('/:id', async (req, res) => {
   } catch (err) {
     console.error('Error updating lead:', err);
     res.status(500).json({ error: 'Error al actualizar consulta.' });
+  }
+});
+
+// DELETE /api/leads/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const existing = await queryFirst('SELECT id FROM leads WHERE id=?', [id]);
+    if (!existing) return res.status(404).json({ error: 'Consulta no encontrada.' });
+
+    await run('DELETE FROM leads WHERE id=?', [id]);
+    res.json({ ok: true, id });
+  } catch (err) {
+    console.error('Error deleting lead:', err);
+    res.status(500).json({ error: 'Error al eliminar consulta.' });
   }
 });
 

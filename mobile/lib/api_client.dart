@@ -68,6 +68,10 @@ class ApiClient {
     return _post('/api/products', data);
   }
 
+  Future<Map<String, dynamic>> deleteProduct(String id) async {
+    return _delete('/api/products/$id');
+  }
+
   // ── Leads ─────────────────────────────────────────────
   Future<Map<String, dynamic>> createLead(Map<String, dynamic> data) async {
     return _post('/api/leads', data, expectedStatus: 201);
@@ -78,6 +82,10 @@ class ApiClient {
     Map<String, dynamic> data,
   ) async {
     return _patch('/api/leads/$id', data);
+  }
+
+  Future<Map<String, dynamic>> deleteLead(String id) async {
+    return _delete('/api/leads/$id');
   }
 
   // ── Chats ─────────────────────────────────────────────
