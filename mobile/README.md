@@ -8,7 +8,7 @@ La app ofrece recarga, indicador de carga, aviso cuando falla la conexión y exp
 
 Desde `mobile/`, ejecuta `flutter pub get`, `flutter test`, `flutter analyze` y `flutter build apk --release`. En este equipo Windows, `scripts/build-android.ps1` ubica las cachés de Flutter y Gradle en `D:` para evitar el poco espacio libre de `C:`. El APK se crea en `build/app/outputs/flutter-apk/app-release.apk`. El proyecto generado firma esta compilación con la clave de prueba de Flutter: sirve para instalación privada y pruebas; para distribuir por una tienda hay que configurar una firma de publicación propia.
 
-Al abrir la app, completa primero Cloudflare Access y después el login propio. Si Cloudflare Access sigue mostrando “Cloudflare sign-in is restricted to members of the account”, hay que corregir su política en la cuenta de Cloudflare. La app móvil no elude esa protección. No pegues credenciales en chats ni en este repositorio.
+Mientras Cloudflare Access siga activo, aparecerá antes del login propio. Para usar una sola pantalla de acceso, comprueba primero que el login propio funciona y luego desactiva Access para la URL de producción desde la cuenta de Cloudflare, como explica el README principal. La app móvil no elude esa protección. No pegues credenciales en chats ni en este repositorio.
 
 ## iPhone
 

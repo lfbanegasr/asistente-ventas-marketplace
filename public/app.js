@@ -1,5 +1,5 @@
 const $ = selector => document.querySelector(selector);
-const state = { products: [], leads: [], aiReady: false, view: 'inicio', pendingLeadId: null };
+const state = { products: [], leads: [], aiReady: false, view: 'inicio', pendingLeadId: null, chats: [], chatId: null, chatBusy: false, pendingChatMessage: null };
 const labels = { consulta: 'Consulta', interesado: 'Interesado', confirmado: 'Confirmado', comprado: 'Comprado', agendado: 'Agendado', entregado: 'Entregado', cancelado: 'Cancelado' };
 const availability = { por_confirmar: 'Por confirmar', proveedor_confirmado: 'Proveedor confirmó', en_mano: 'En mano' };
 const money = value => `Bs ${Number(value || 0).toLocaleString('es-BO')}`;
@@ -15,7 +15,7 @@ async function api(path, method = 'GET', data) {
 }
 async function refresh() {
   $('#loading').hidden = false;
-  try { const data = await api('/api/state'); state.products = data.products; state.leads = data.leads; state.aiReady = data.ai_ready; render(); }
+  try { const data = await api('/api/state'); state.products = data.products; state.leads = data.leads; state.aiReady = data.ai_ready; render(); await loadChats(); if (state.chatId) await openChat(state.chatId, true); }
   catch (e) { notice(`No se pudo cargar: ${e.message}`); }
   finally { $('#loading').hidden = true; }
 }
@@ -72,10 +72,8 @@ function renderProducts() {
   });
 }
 function renderPickers() {
-  const pickers = [$('#ai-product'), $('#lead-form [name="product_id"]')];
+  const pickers = [$('#chat-product'), $('#lead-form [name="product_id"]')];
   pickers.forEach(picker => { const selected = picker.value; picker.replaceChildren(); state.products.forEach(p => { const option = element('option', p.name); option.value = p.id; picker.append(option); }); if (state.products.some(p => p.id === selected)) picker.value = selected; });
-  $('#ai-draft').disabled = !state.aiReady;
-  $('#ai-draft').title = state.aiReady ? '' : 'Configura la clave de Gemini para activar esta opción';
 }
 function openLead(lead) {
   const form = $('#lead-form'); form.reset(); state.pendingLeadId = lead ? null : crypto.randomUUID();
@@ -121,27 +119,92 @@ async function saveProduct(event) {
   catch (e) { const box = $('#product-form-error'); box.textContent = `No se guardó: ${e.message}`; box.hidden = false; }
   finally { button.disabled = false; button.textContent = 'Guardar'; }
 }
-function baseDraft() {
-  const product = state.products.find(p => p.id === $('#ai-product').value); if (!product) return;
-  const goal = $('#ai-goal').value;
-  const firstFact = product.facts.split(/\.\s/)[0].replace(/\.$/, '');
-  let text = `¡Hola! ${product.name} está a ${money(product.price)}.${firstFact ? ` ${firstFact}.` : ''}`;
-  text += ' Te confirmo disponibilidad y fecha de entrega antes de cerrar el pedido.';
-  if (goal.includes('rebaja')) text += ` El precio publicado es ${money(product.price)}. Si me dices qué modalidad de entrega te conviene, reviso qué puedo ofrecerte.`;
-  else if (goal.includes('Yango')) text += ' ¿En qué barrio o referencia estás? Te cotizo Yango sin compromiso. El producto se paga antes de despacharlo y el envío se cotiza aparte.';
-  else if (goal.includes('entrega')) text += ' Podemos coordinar en la UAGRM (módulos), Cine Center u otro punto público. En persona pagas al recibir. ¿Qué día y punto te convienen?';
-  else text += ' ¿Prefieres entrega en persona o envío por Yango?';
-  setDraft(text);
+function chatError(message = '') { const box = $('#chat-error'); box.textContent = message; box.hidden = !message; }
+function renderChatList() {
+  const list = $('#chat-list'); list.replaceChildren();
+  if (!state.chats.length) { list.append(element('div', 'Aún no hay conversaciones.', 'chat-empty')); return; }
+  state.chats.forEach(chat => {
+    const button = element('button', '', `chat-list-item${chat.id === state.chatId ? ' active' : ''}`);
+    button.type = 'button'; button.append(element('strong', chat.title), element('small', chat.product_name));
+    button.addEventListener('click', () => openChat(chat.id)); list.append(button);
+  });
 }
-function setDraft(text) { const box = $('#draft'); box.textContent = text; box.classList.add('ready'); $('#copy-draft').disabled = false; $('#draft-check').hidden = false; }
-async function aiDraft() {
-  const button = $('#ai-draft'); if (button.disabled) return;
-  const message = $('#customer-message').value.trim(); if (!message) { notice('Pega primero el mensaje del cliente.'); return; }
-  baseDraft();
-  button.disabled = true; button.textContent = 'Preparando…';
-  try { const result = await api('/api/ai', 'POST', { product_id: $('#ai-product').value, goal: $('#ai-goal').value, customer_message: message }); setDraft(result.draft); }
-  catch (e) { notice(`${e.message} La respuesta base sigue disponible para revisar y copiar.`); }
-  finally { button.disabled = !state.aiReady; button.textContent = 'Sugerir con Gemini'; }
+async function loadChats() {
+  try { state.chats = (await api('/api/chats')).threads; renderChatList(); }
+  catch (e) { $('#chat-list').replaceChildren(element('div', `No se cargaron los chats: ${e.message}`, 'chat-empty')); }
+}
+function newChat() {
+  state.chatId = null; state.pendingChatMessage = null; $('#chat-input').value = ''; chatError();
+  $('#chat-title').textContent = 'Nueva conversación'; $('#chat-product-name').textContent = 'Elige un producto para empezar';
+  $('#chat-product').disabled = false; $('#delete-chat').hidden = true;
+  $('#chat-messages').replaceChildren();
+  const welcome = element('div', '', 'chat-welcome');
+  welcome.append(element('span', '✦', 'chat-spark'), element('h3', '¿Qué necesitas responder?'), element('p', 'Pega una consulta o pregúntame cómo negociar, comprobar disponibilidad o coordinar una entrega. Las respuestas son borradores para revisar y copiar.'));
+  $('#chat-messages').append(welcome); renderChatList(); $('#chat-input').focus();
+}
+function chatBubble(text, role, source = '') {
+  const wrap = element('div', '', `chat-row ${role}`); const bubble = element('div', text, 'chat-bubble'); wrap.append(bubble);
+  if (role === 'assistant') {
+    const tools = element('div', '', 'chat-bubble-tools');
+    tools.append(element('small', source === 'base' ? 'Respuesta base' : 'Gemini'));
+    const copy = element('button', 'Copiar', 'chat-copy'); copy.type = 'button';
+    copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(text); notice('Texto copiado. Revísalo antes de enviarlo.', true); } catch { notice('No se pudo copiar automáticamente. Selecciona el texto.'); } });
+    tools.append(copy); wrap.append(tools);
+  }
+  return wrap;
+}
+function renderChat(turns) {
+  const messages = $('#chat-messages'); messages.replaceChildren();
+  if (!turns.length) { messages.append(element('div', 'Escribe tu primera pregunta para este producto.', 'chat-empty')); return; }
+  turns.forEach(turn => { messages.append(chatBubble(turn.user_text, 'user'), chatBubble(turn.assistant_text, 'assistant', turn.source)); });
+  messages.scrollTop = messages.scrollHeight;
+}
+async function openChat(id, force = false) {
+  if (state.chatBusy) return;
+  if (id === state.chatId && !force) return;
+  chatError(); $('#chat-messages').replaceChildren(element('div', 'Cargando conversación…', 'chat-empty'));
+  try {
+    const data = await api(`/api/chats/${id}`); state.chatId = id;
+    if (!force) { state.pendingChatMessage = null; $('#chat-input').value = ''; }
+    $('#chat-title').textContent = data.thread.title; $('#chat-product-name').textContent = data.thread.product_name;
+    $('#chat-product').value = data.thread.product_id; $('#chat-product').disabled = true; $('#delete-chat').hidden = false;
+    renderChat(data.turns); renderChatList();
+  } catch (e) { chatError(`No se pudo abrir: ${e.message}`); }
+}
+async function sendChat(event) {
+  event.preventDefault(); if (state.chatBusy) return;
+  const input = $('#chat-input'), message = input.value.trim();
+  if (!message) { chatError('Escribe una pregunta o pega un mensaje.'); return; }
+  if (!$('#chat-product').value) { chatError('Elige un producto.'); return; }
+  if (!state.pendingChatMessage || state.pendingChatMessage.text !== message) state.pendingChatMessage = { text: message, requestId: crypto.randomUUID() };
+  const pending = state.pendingChatMessage;
+  state.chatBusy = true; $('#chat-send').disabled = true; $('#chat-send').textContent = 'Pensando…'; chatError();
+  try {
+    if (!state.chatId) {
+      const id = crypto.randomUUID(); await api('/api/chats', 'POST', { id, product_id: $('#chat-product').value }); state.chatId = id;
+      $('#chat-product').disabled = true; $('#delete-chat').hidden = false;
+    }
+    const messages = $('#chat-messages');
+    if (messages.querySelector('.chat-welcome,.chat-empty')) messages.replaceChildren();
+    const preview = chatBubble(message, 'user'); const waiting = element('div', 'Preparando respuesta…', 'chat-waiting');
+    messages.append(preview, waiting); messages.scrollTop = messages.scrollHeight;
+    try {
+      const result = await api(`/api/chats/${state.chatId}/turns`, 'POST', { request_id: pending.requestId, message });
+      waiting.remove(); preview.replaceWith(chatBubble(result.turn.user_text, 'user'));
+      messages.append(chatBubble(result.turn.assistant_text, 'assistant', result.turn.source)); messages.scrollTop = messages.scrollHeight;
+      input.value = ''; state.pendingChatMessage = null;
+      if (result.warning) chatError(result.warning);
+      await loadChats(); const selected = state.chats.find(chat => chat.id === state.chatId);
+      if (selected) { $('#chat-title').textContent = selected.title; $('#chat-product-name').textContent = selected.product_name; }
+    } catch (e) { waiting.remove(); preview.remove(); throw e; }
+  } catch (e) { chatError(`No se envió: ${e.message}. Tu texto sigue aquí; toca Enviar para reintentar.`); }
+  finally { state.chatBusy = false; $('#chat-send').disabled = false; $('#chat-send').textContent = 'Enviar'; }
+}
+async function deleteChat() {
+  if (!state.chatId || state.chatBusy || !confirm('¿Eliminar esta conversación guardada?')) return;
+  const id = state.chatId;
+  try { await api(`/api/chats/${id}`, 'DELETE'); await loadChats(); newChat(); notice('Conversación eliminada.', true); }
+  catch (e) { chatError(`No se pudo eliminar: ${e.message}`); }
 }
 function exportCsv() {
   const cols = ['alias','channel','product_name','status','amount','actual_cost','expenses','delivery_mode','delivery_place','delivery_at','paid','notes','created_at'];
@@ -165,7 +228,7 @@ $('#lead-form [name="product_id"]').addEventListener('change', event => { const 
 $('#search').addEventListener('input', renderLeads); $('#status-filter').addEventListener('change', renderLeads);
 $('#refresh').addEventListener('click', refresh); $('#export').addEventListener('click', exportCsv);
 $('#logout').addEventListener('click', async () => { try { await api('/api/logout', 'POST'); location.replace('/login'); } catch (e) { notice(e.message); } });
-$('#base-draft').addEventListener('click', baseDraft); $('#ai-draft').addEventListener('click', aiDraft);
-$('#copy-draft').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#draft').textContent); notice('Texto copiado. Revísalo antes de enviarlo.', true); } catch { notice('No se pudo copiar automáticamente. Selecciona el texto.'); } });
+$('#new-chat').addEventListener('click', newChat); $('#chat-form').addEventListener('submit', sendChat); $('#delete-chat').addEventListener('click', deleteChat);
+$('#chat-input').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#chat-form').requestSubmit(); } });
 $('#today').textContent = new Intl.DateTimeFormat('es-BO', { dateStyle: 'full', timeZone: 'America/La_Paz' }).format(new Date());
 refresh();

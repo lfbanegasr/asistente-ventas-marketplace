@@ -2,12 +2,12 @@
 
 Aplicación privada y ligera para gestionar consultas de Marketplace y WhatsApp Business desde el celular. Contiene fichas de producto, costos y precios, estado de cada consulta, entregas pendientes, ventas cobradas, exportación CSV y un asistente que propone respuestas con Gemini. El vendedor revisa y copia el texto; la aplicación no lee ni envía mensajes de Facebook o WhatsApp.
 
-La app Flutter para Android y iPhone está en [`mobile/`](mobile/README.md). Usa este mismo Worker y la misma base; Cloudflare Access y el login propio siguen protegiendo los datos.
+La app Flutter para Android y iPhone está en [`mobile/`](mobile/README.md). Usa este mismo Worker y la misma base. Mientras Cloudflare Access siga activo en la cuenta, aparecerá antes del login propio.
 
 ## Flujo diario
 
 1. **Productos:** revisa precio y disponibilidad antes de responder. Los tres productos iniciales son PB6010, PB225 y KNUP KP-5501TM. Todos empiezan en **Por confirmar**. Marca **Verifiqué esta disponibilidad ahora** solo después de comprobarla; las fichas antiguas empiezan sin marca de verificación.
-2. **Asistente:** pega el mensaje del cliente, elige el producto y el objetivo. Puedes usar una respuesta base sin Gemini o pedir un borrador a Gemini. Revisa el resultado, cópialo y envíalo tú por el chat donde te escribió el cliente.
+2. **Asistente:** abre una conversación por producto, pega el mensaje del cliente o pregunta libremente. El historial se guarda en D1 y aparece en web y APK. Gemini propone una respuesta; si falla o falta la clave, queda una respuesta base. Revisa el resultado, cópialo y envíalo tú por el chat donde te escribió el cliente.
 3. **Consultas:** registra a la persona si eligió producto o requiere seguimiento. Si confirmó precio y modalidad, marca **Confirmado**. Al comprar la unidad, marca **Comprado**. Al fijar hora y lugar, marca **Agendado**.
 4. **Entrega:** anota modalidad, lugar y fecha al agendar. Para Yango, cobra el producto antes de despacharlo. Confirma el pago cuando realmente se haya recibido y recién entonces marca **Entregado**. El margen se calcula con precio menos costo y otros gastos registrados.
 5. **Copia de datos:** usa **Exportar CSV** con frecuencia; guárdalo en un lugar privado.
@@ -16,11 +16,11 @@ En persona: UAGRM (módulos), Cine Center u otro punto público acordado, con pa
 
 ## Estructura y prioridades
 
-Un Worker sirve la interfaz y la API privada; D1 guarda productos, consultas, entregas, pagos y el contador de uso de Gemini. Los secretos `APP_PASSWORD` y `GEMINI_API_KEY` quedan solo en el Worker. Messenger y WhatsApp quedan fuera: el vendedor revisa y copia cada borrador.
+Un Worker sirve la interfaz y la API privada; D1 guarda productos, consultas, entregas, pagos, conversaciones del asistente y el contador de uso de Gemini. Los secretos `APP_PASSWORD` y `GEMINI_API_KEY` quedan solo en el Worker. Messenger y WhatsApp quedan fuera: el vendedor revisa y copia cada borrador.
 
-Esta primera etapa conserva las cuatro secciones actuales. Los datos mínimos de una consulta son alias, canal, producto, estado, precio y costo; entrega, pago, gastos y notas se completan cuando correspondan. La creación de una consulta se hace en una sola operación con identificador de petición para que un reintento no la duplique. En las próximas etapas conviene priorizar seguimiento más visible, control de entrega y margen; no se requieren tienda pública ni variantes.
+La aplicación conserva las cuatro secciones. Los datos mínimos de una consulta son alias, canal, producto, estado, precio y costo; entrega, pago, gastos y notas se completan cuando correspondan. La creación de una consulta y cada turno de chat usan identificadores de petición para que un reintento no los duplique. No se requieren tienda pública ni variantes.
 
-Aceptación de esta etapa: sin `APP_PASSWORD` no hay acceso a datos; una petición repetida crea una sola consulta completa; las fichas antiguas no se consideran verificadas; una entrega no se marca completada sin pago comprobado; y la respuesta base permanece disponible cuando Gemini falla. Antes de considerar producción lista, comprobar el despliegue real, el secreto, D1 y el acceso desde celular y PC.
+Aceptación de esta etapa: sin `APP_PASSWORD` no hay acceso a datos; una petición repetida crea una sola consulta o turno de chat; las fichas antiguas no se consideran verificadas; una entrega no se marca completada sin pago comprobado; y la respuesta base permanece disponible cuando Gemini falla. Antes de considerar producción lista, comprobar el despliegue real, el secreto, D1 y el acceso desde celular y PC.
 
 ## Para ponerla en Internet
 
@@ -36,9 +36,9 @@ El repositorio privado contiene solo este proyecto. Cloudflare puede conectarlo 
 - **Build command:** `npm run build`.
 - **Deploy command:** `npx wrangler deploy`.
 
-Cloudflare puede crear la base D1 automáticamente a partir de `wrangler.jsonc`. El esquema inicial y las tres fichas se crean la primera vez que entras. La segunda migración añade la marca de disponibilidad verificada de forma compatible con datos anteriores. En **Workers & Pages → tu Worker → Settings → Variables and Secrets**, comprueba si existe `APP_PASSWORD`; si falta, créalo como **Secret** y guarda el mismo valor directamente en tu gestor. `GEMINI_API_KEY` también debe ser un secreto del Worker. No hace falta revelar ninguno de los valores para comprobar si están configurados.
+Cloudflare puede crear la base D1 automáticamente a partir de `wrangler.jsonc`. El esquema inicial y las tres fichas se crean la primera vez que entras. La segunda migración añade la marca de disponibilidad; la tercera añade conversaciones. Ambas se aplican automáticamente de forma compatible con datos anteriores al abrir la app con sesión. En **Workers & Pages → tu Worker → Settings → Variables and Secrets**, comprueba si existe `APP_PASSWORD`; si falta, créalo como **Secret** y guarda el mismo valor directamente en tu gestor. `GEMINI_API_KEY` también debe ser un secreto del Worker. No hace falta revelar ninguno de los valores para comprobar si están configurados.
 
-**Mantén Cloudflare Access activo.** La regla **Cloudflare account** solo admite miembros de la cuenta, por eso puede bloquear tu correo aunque seas propietario de la app. En **Zero Trust → Access → Applications → aplicación de este Worker**, usa una política **Allow** restringida a tu dirección exacta y el método **One-time PIN** para poder entrar y probar el login propio; no uses **Everyone**, dominio de correo completo ni **Bypass**. Activa One-time PIN como método de inicio de sesión si todavía no aparece. Verifica en celular y PC que Access deje pasar, que `/login` muestre el login propio y que los datos no se vean sin sesión. Solo después de confirmar el nuevo despliegue, `APP_PASSWORD`, D1 y el cierre de sesión se puede evaluar quitar Access. `OWNER_EMAIL` ya no se usa.
+**Acceso de una sola pantalla:** Cloudflare Access se ejecuta antes del Worker; el código de Flutter o del login propio no puede saltarlo. Mantén Access activo mientras verificas el nuevo despliegue. Primero comprueba que `APP_PASSWORD` existe como secreto, que D1 está enlazada y que el despliegue de `main` terminó correctamente. Para probar el login propio antes de quitar Access, cambia temporalmente la política **Cloudflare account** por una regla **Allow** limitada a tu correo exacto con **One-time PIN**, entra y comprueba `/login`, apertura de datos, cierre de sesión y rechazo de `/api/state` sin sesión. Una vez hechas esas comprobaciones, en **Workers & Pages → tu Worker → Access** desactiva la protección de producción `workers.dev` de ese Worker y elimina cualquier aplicación Access que cubra el mismo hostname o ruta. Comprueba en una ventana privada que aparece directamente el login propio, tanto en PC como en APK. No desactives la ruta `workers.dev`; eso apagaría el enlace. Si `APP_PASSWORD` falta o el login falla, vuelve a activar Access hasta corregirlo. `OWNER_EMAIL` ya no se usa.
 
 Si pierdes la contraseña guardada, entra a tu cuenta de Cloudflare por sus propios métodos de recuperación y cambia el secreto `APP_PASSWORD` por uno nuevo; eso invalida las sesiones anteriores. Guarda el nuevo valor en el gestor de ambos dispositivos. Si tampoco tienes acceso a Cloudflare, primero debes recuperar esa cuenta; la app no tiene una vía pública de recuperación que eluda el login.
 
@@ -53,7 +53,7 @@ Después de cada cambio en `main`, GitHub activará un nuevo despliegue. No suba
 5. Ejecuta `npx wrangler secret put APP_PASSWORD` y escribe una contraseña larga y única. Después ejecuta `npx wrangler secret put GEMINI_API_KEY` y escribe la clave de Gemini. Los valores deben quedar como secretos del Worker, nunca en `wrangler.jsonc` ni en el frontend.
 6. Abre la URL `workers.dev`, inicia sesión y comprueba que el panel se muestre. Cierra sesión y comprueba que los datos ya no aparezcan.
 
-La base y el contenido estarán en tu propia cuenta de Cloudflare, separados del panel anterior de `chatgpt.site`. Si Gemini alcanza su cuota o falla, la aplicación sigue funcionando y tienes **Respuesta base**.
+La base y el contenido estarán en tu propia cuenta de Cloudflare, separados del panel anterior de `chatgpt.site`. Si Gemini alcanza su cuota o falla, el chat guarda una respuesta base.
 
 ## Prueba local
 

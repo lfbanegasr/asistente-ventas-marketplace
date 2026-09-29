@@ -103,3 +103,44 @@ test('a fresh Cloudflare database initializes when its owner first opens the app
   assert.equal((await response.json()).products.length, 3);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM products').get().count, 3);
 });
+
+test('chat history stays private and a retried message is stored only once', async () => {
+  const { db, call, signIn } = setup();
+  const chatId = crypto.randomUUID(), requestId = crypto.randomUUID();
+  assert.equal((await call('/api/chats')).status, 401);
+  assert.equal((await call('/api/chats', 'POST', { id: chatId, product_id: 'pb6010' })).status, 401);
+  const cookie = await signIn();
+  assert.equal((await call('/api/chats', 'POST', { id: chatId, product_id: 'pb6010' }, cookie)).status, 200);
+  const payload = { request_id: requestId, message: 'Cliente: ¿Envío por Yango al barrio Centro? Teléfono 76543210' };
+  const first = await call(`/api/chats/${chatId}/turns`, 'POST', payload, cookie);
+  assert.equal(first.status, 201);
+  const answer = (await first.json()).turn;
+  assert.equal(answer.source, 'base');
+  assert.match(answer.assistant_text, /antes de despacharlo/);
+  assert.doesNotMatch(answer.user_text, /76543210/);
+  const retry = await call(`/api/chats/${chatId}/turns`, 'POST', payload, cookie);
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).duplicate, true);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM chat_turns').get().count, 1);
+  const loaded = await (await call(`/api/chats/${chatId}`, 'GET', undefined, cookie)).json();
+  assert.equal(loaded.turns.length, 1);
+  assert.equal((await call(`/api/chats/${chatId}`)).status, 401);
+});
+
+test('Gemini failure keeps a safe base answer in the chat', async () => {
+  const { call, signIn, env } = setup();
+  const cookie = await signIn();
+  const id = crypto.randomUUID();
+  await call('/api/chats', 'POST', { id, product_id: 'pb225' }, cookie);
+  env.GEMINI_API_KEY = 'test-only';
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('offline'); };
+  try {
+    const response = await call(`/api/chats/${id}/turns`, 'POST', { request_id: crypto.randomUUID(), message: '¿Está disponible hoy?' }, cookie);
+    assert.equal(response.status, 201);
+    const result = await response.json();
+    assert.equal(result.turn.source, 'base');
+    assert.match(result.turn.assistant_text, /confirmo disponibilidad y fecha/);
+    assert.match(result.warning, /Gemini/);
+  } finally { globalThis.fetch = originalFetch; }
+});
