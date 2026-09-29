@@ -134,6 +134,7 @@ async function loadChats() {
   catch (e) { $('#chat-list').replaceChildren(element('div', `No se cargaron los chats: ${e.message}`, 'chat-empty')); }
 }
 function newChat() {
+  if (state.chatBusy) return;
   state.chatId = null; state.pendingChatMessage = null; $('#chat-input').value = ''; chatError();
   $('#chat-title').textContent = 'Nueva conversación'; $('#chat-product-name').textContent = 'Elige un producto para empezar';
   $('#chat-product').disabled = false; $('#delete-chat').hidden = true;
