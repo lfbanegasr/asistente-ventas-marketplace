@@ -147,8 +147,13 @@ function exportCsv() {
   const cols = ['alias','channel','product_name','status','amount','actual_cost','expenses','delivery_mode','delivery_place','delivery_at','paid','notes','created_at'];
   const quote = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
   const csv = '\ufeff' + [cols.join(','), ...state.leads.map(l => cols.map(key => quote(l[key])).join(','))].join('\r\n');
+  const fileName = `ventas-${new Date().toISOString().slice(0, 10)}.csv`;
+  if (window.SalesExport) {
+    window.SalesExport.postMessage(JSON.stringify({ fileName, csv }));
+    return;
+  }
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a'); link.href = url; link.download = `ventas-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const link = document.createElement('a'); link.href = url; link.download = fileName; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 document.querySelectorAll('.tab').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));

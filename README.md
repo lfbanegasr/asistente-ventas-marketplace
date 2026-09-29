@@ -2,6 +2,8 @@
 
 Aplicación privada y ligera para gestionar consultas de Marketplace y WhatsApp Business desde el celular. Contiene fichas de producto, costos y precios, estado de cada consulta, entregas pendientes, ventas cobradas, exportación CSV y un asistente que propone respuestas con Gemini. El vendedor revisa y copia el texto; la aplicación no lee ni envía mensajes de Facebook o WhatsApp.
 
+La app Flutter para Android y iPhone está en [`mobile/`](mobile/README.md). Usa este mismo Worker y la misma base; Cloudflare Access y el login propio siguen protegiendo los datos.
+
 ## Flujo diario
 
 1. **Productos:** revisa precio y disponibilidad antes de responder. Los tres productos iniciales son PB6010, PB225 y KNUP KP-5501TM. Todos empiezan en **Por confirmar**. Marca **Verifiqué esta disponibilidad ahora** solo después de comprobarla; las fichas antiguas empiezan sin marca de verificación.
