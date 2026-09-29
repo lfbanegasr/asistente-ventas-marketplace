@@ -3,6 +3,9 @@ import 'api_client.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 
+import 'services/offline_storage.dart';
+import 'services/sync_manager.dart';
+
 // ── CONFIGURE YOUR BACKEND URL HERE ─────────────────────
 // Backend en producción en Render
 const String apiBaseUrl = 'https://asistente-ventas-marketplace.onrender.com';
@@ -10,10 +13,15 @@ const String apiBaseUrl = 'https://asistente-ventas-marketplace.onrender.com';
 // ─────────────────────────────────────────────────────────
 
 final apiClient = ApiClient(baseUrl: apiBaseUrl);
+late final OfflineStorage offlineStorage;
+late final SyncManager syncManager;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await apiClient.init();
+  offlineStorage = await OfflineStorage.create();
+  syncManager = SyncManager(apiClient: apiClient, storage: offlineStorage);
+  await syncManager.init();
   runApp(const SalesApp());
 }
 

@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { login, session } from './auth.js';
 import { authenticate } from './middleware/authenticate.js';
-import { initDb, query, closeDb } from './database.js';
+import { initDb, query, closeDb, getDbDiagnosis } from './database.js';
 import productsRouter from './routes/products.js';
 import leadsRouter from './routes/leads.js';
 import chatsRouter from './routes/chats.js';
@@ -50,15 +50,24 @@ app.use(express.json({ limit: '12kb' }));
 app.post('/api/login', login);
 app.get('/api/session', session);
 
-// ── Health check ─────────────────────────────────────
-app.get('/api/health', async (req, res) => {
+// ── Health check & Diagnostics ───────────────────────
+const healthCheckHandler = async (req, res) => {
   try {
-    await query('SELECT 1');
-    res.json({ status: 'ok', service: 'asistente-ventas-backend' });
+    const diagnosis = await getDbDiagnosis();
+    const isHealthy = diagnosis.connected;
+    res.status(isHealthy ? 200 : 503).json({
+      status: isHealthy ? 'ok' : 'degraded',
+      service: 'asistente-ventas-backend',
+      uptime_seconds: Math.floor(process.uptime()),
+      database: diagnosis,
+      timestamp: new Date().toISOString(),
+    });
   } catch (err) {
     res.status(503).json({ status: 'error', message: err.message });
   }
-});
+};
+app.get('/health', healthCheckHandler);
+app.get('/api/health', healthCheckHandler);
 
 // ── Protected routes ─────────────────────────────────
 app.use('/api/products', authenticate, productsRouter);
@@ -101,16 +110,49 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada.' });
 });
 
+// ── Keep-Alive Pinger (Render Free Tier Sleep Prevention) ───
+let pingerInterval = null;
+
+function startKeepAlive() {
+  const isProd = process.env.NODE_ENV === 'production' || !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
+  const enabled = process.env.KEEP_ALIVE === 'true' || isProd;
+  if (!enabled) return;
+
+  const target = process.env.RENDER_EXTERNAL_URL
+    ? `${process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '')}/api/health`
+    : (process.env.KEEP_ALIVE_URL || 'https://asistente-ventas-marketplace.onrender.com/api/health');
+
+  // Ping cada 10 minutos (Render duerme a los 15 min de inactividad)
+  const intervalMs = Number(process.env.KEEP_ALIVE_INTERVAL_MS) || 600000;
+
+  console.log(`[Keep-Alive] Servicio de prevención de latencia activo hacia ${target} (cada ${intervalMs / 1000}s)`);
+
+  pingerInterval = setInterval(async () => {
+    try {
+      const res = await fetch(target, {
+        headers: { 'User-Agent': 'MesaVentas-KeepAlive/1.0' }
+      });
+      console.log(`[Keep-Alive] Ping ${target} -> HTTP ${res.status}`);
+    } catch (err) {
+      console.warn(`[Keep-Alive] Ping falló a ${target}:`, err.message);
+    }
+  }, intervalMs);
+
+  if (pingerInterval.unref) pingerInterval.unref();
+}
+
 // ── Start server ─────────────────────────────────────
 async function start() {
   await initDb();
 
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend listening on port ${PORT}`);
+    startKeepAlive();
   });
 
   async function shutdown() {
     console.log('Shutting down gracefully...');
+    if (pingerInterval) clearInterval(pingerInterval);
     server.close(async () => {
       await closeDb();
       process.exit(0);

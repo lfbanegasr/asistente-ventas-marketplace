@@ -3,11 +3,48 @@ import { newDb } from 'pg-mem';
 import { postgresSchema } from './schema.js';
 
 let pool = null;
+let dbType = 'uninitialized';
+
+function maskUri(uri) {
+  if (!uri) return 'none';
+  try {
+    const parsed = new URL(uri);
+    return `${parsed.protocol}//${parsed.username ? '***' : ''}${parsed.password ? ':***@' : ''}${parsed.host}${parsed.pathname}`;
+  } catch (_) {
+    return uri.replace(/:([^@]+)@/, ':***@');
+  }
+}
 
 function normalizeSql(sql) {
   if (!sql.includes('?')) return sql;
   let index = 1;
   return sql.replace(/\?/g, () => `$${index++}`);
+}
+
+export async function getDbDiagnosis() {
+  if (!pool) {
+    return { type: dbType, connected: false, latency_ms: null };
+  }
+  const start = Date.now();
+  try {
+    await pool.query('SELECT 1');
+    const latency_ms = Date.now() - start;
+    return {
+      type: dbType,
+      connected: true,
+      latency_ms,
+      pool_total: pool.totalCount ?? 1,
+      pool_idle: pool.idleCount ?? 1,
+      pool_waiting: pool.waitingCount ?? 0,
+    };
+  } catch (err) {
+    return {
+      type: dbType,
+      connected: false,
+      error: err.message,
+      latency_ms: Date.now() - start,
+    };
+  }
 }
 
 export async function initDb() {
@@ -31,20 +68,29 @@ export async function initDb() {
       } finally {
         client.release();
       }
-      console.log('[DB] Conectado exitosamente a PostgreSQL Cloud (Neon / Supabase / etc).');
+      dbType = 'postgres-cloud';
+      console.log(`[DB] Conectado exitosamente a PostgreSQL Cloud: ${maskUri(connectionString)}`);
     } catch (err) {
       console.error('[DB] Error conectando a PostgreSQL con DATABASE_URL:', err.message);
       throw err;
     }
   } else {
+    // Protección contra pérdida de datos en despliegue
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_EPHEMERAL_DB !== 'true') {
+      const errorMsg = '[DB] 🚨 FATAL: En producción es obligatorio configurar DATABASE_URL (Neon / Supabase). Para pruebas volátiles defina ALLOW_EPHEMERAL_DB=true.';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
     // Modo Fallback Local In-Memory PostgreSQL (pg-mem)
     console.log('[DB] ⚠️ DATABASE_URL no configurada.');
-    console.log('[DB] Iniciando PostgreSQL en memoria para desarrollo local.');
-    console.log('[DB] Para base de datos permanente en la nube gratuita (Neon / Supabase), configura DATABASE_URL en .env');
+    console.log('[DB] Iniciando PostgreSQL en memoria (pg-mem) para desarrollo o tests locales.');
+    console.log('[DB] Para persistencia en la nube (Neon / Supabase), configura DATABASE_URL en variables de entorno.');
 
     const memDb = newDb();
     const memPg = memDb.adapters.createPg();
     pool = new memPg.Pool();
+    dbType = 'pg-mem-fallback';
   }
 
   // Ejecutar migraciones iniciales

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initDb, query, queryFirst, run, closeDb } from '../src/database.js';
+import { initDb, query, queryFirst, run, closeDb, getDbDiagnosis } from '../src/database.js';
 import { generateToken, verifyToken } from '../src/auth.js';
 
 test.before(async () => {
@@ -86,4 +86,11 @@ test('Can delete product and cascade its dependencies', async () => {
   await run('DELETE FROM products WHERE id=?', [prodId]);
   const deleted = await queryFirst('SELECT id FROM products WHERE id=?', [prodId]);
   assert.strictEqual(deleted, null);
+});
+
+test('getDbDiagnosis reports active connection and metrics', async () => {
+  const diag = await getDbDiagnosis();
+  assert.ok(diag.connected);
+  assert.strictEqual(typeof diag.latency_ms, 'number');
+  assert.ok(diag.type === 'postgres-cloud' || diag.type === 'pg-mem-fallback');
 });

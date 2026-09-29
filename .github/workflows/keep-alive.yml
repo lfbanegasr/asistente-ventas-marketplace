@@ -1,0 +1,23 @@
+name: Keep-Alive Backend Render
+
+on:
+  schedule:
+    # Ejecuta cada 14 minutos entre las 10:00 y las 02:00 UTC (horario comercial Bolivia: 06:00 a 22:00 BOT)
+    # Evita que el contenedor de Render se apague por inactividad (sleep tras 15m)
+    - cron: '*/14 10-23,0-2 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Health Endpoint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://asistente-ventas-marketplace.onrender.com/api/health)
+          echo "Render Health Ping Status: $STATUS"
+          if [ "$STATUS" -ne 200 ]; then
+            echo "Aviso: Servidor respondió con código $STATUS o estaba despertando."
+          else
+            echo "Servidor activo y respondiendo con cero latencia."
+          fi
